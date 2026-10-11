@@ -34,6 +34,13 @@ export const api = {
 
   startFull: () => fetch(`${BASE}/runs/full`, { method: "POST" }).then(json),
 
+  classify: (reclassify = false) =>
+    fetch(`${BASE}/classify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reclassify }),
+    }).then(json),
+
   proposals: (status) =>
     fetch(`${BASE}/proposals${status ? `?status=${encodeURIComponent(status)}` : ""}`)
       .then(json)

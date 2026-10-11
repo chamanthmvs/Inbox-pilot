@@ -139,6 +139,11 @@ def main():
         print("Direct apply endpoint + dry-run toggle:")
         r = http.post("/api/apply").json()
         check("apply endpoint returns a result", "applied" in r)
+        check("status reports llm_enabled flag", "llm_enabled" in http.get("/api/status").json())
+        rc = http.post("/api/classify", json={"reclassify": False}).json()
+        check("reclassify returns a run", bool(rc.get("run_id")))
+        wait_until(lambda: http.get("/api/status").json()["run"]["status"] in ("done", "error"))
+
         dr = http.post("/api/settings/dry_run", json={"enabled": True}).json()
         check("dry-run toggles on", dr["dry_run"] is True)
         check("status reflects dry-run", http.get("/api/status").json()["dry_run"] is True)

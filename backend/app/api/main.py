@@ -46,6 +46,10 @@ class DryRunBody(BaseModel):
     enabled: bool
 
 
+class ClassifyBody(BaseModel):
+    reclassify: bool = False
+
+
 class GroupDecisionBody(BaseModel):
     domain: str
     label: str
@@ -79,10 +83,19 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
         return {
             "authenticated": mgr.is_authenticated(),
             "dry_run": mgr.settings.dry_run,
+            "llm_enabled": mgr.llm_available(),
             "proposal_counts": mgr.store.proposal_counts(),
             "audit_count": mgr.store.audit_count(),
             "run": mgr.current.snapshot() if mgr.current else None,
         }
+
+    @app.post("/api/classify")
+    def reclassify(body: ClassifyBody = ClassifyBody(), mgr: RunManager = Depends(get_manager)):
+        try:
+            run = mgr.start_classify(reclassify=body.reclassify)
+        except RuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error))
+        return run.snapshot()
 
     @app.post("/api/connect")
     def connect(mgr: RunManager = Depends(get_manager)):

@@ -21,6 +21,7 @@ export default function App() {
 
   const connected = !!(status && status.authenticated);
   const dryRun = !!(status && status.dry_run);
+  const llmEnabled = !!(status && status.llm_enabled);
   const approvedCount = counts.APPROVED || 0;
   const hasWork = groups.length > 0 || needsReview.length > 0 || approvedCount > 0;
   const idle = phase === "idle";
@@ -289,6 +290,23 @@ export default function App() {
       {/* Dashboard / review — shown whenever there is work, no live run needed */}
       {showDashboard && (
         <>
+          {(counts.NEEDS_REVIEW || 0) > 0 && (
+            <div className="banner info" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"14px",flexWrap:"wrap"}}>
+              <span>
+                <b>{counts.NEEDS_REVIEW}</b> emails need review.
+                {llmEnabled
+                  ? " Let the AI classifier label them — no re-fetch from Gmail needed."
+                  : " The AI classifier is OFF — add ANTHROPIC_API_KEY to backend/.env and restart to shrink this pile automatically."}
+              </span>
+              {llmEnabled && (
+                <button className="btn primary" disabled={busy || phase !== "idle"}
+                  onClick={() => launch(api.classify(false))}>
+                  ✨ Auto-classify with AI
+                </button>
+              )}
+            </div>
+          )}
+
           <section className="tiles">
             <Tile label="Groups to review" value={groups.length} accent />
             <Tile label="Pending emails" value={counts.PENDING || 0} />

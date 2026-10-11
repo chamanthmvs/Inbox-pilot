@@ -126,6 +126,23 @@ categories:
         rules:
           from_domains: ["nse.co.in", "nseindia.com", "bseindia.com", "cdslindia.com", "nsdl.co.in"]
           subject_contains: ["securities", "demat", "contract note", "holding statement"]
+      - name: Finance/AI & API Billing
+        description: Billing, usage, credits and receipts from AI/LLM and developer-API providers (OpenAI, Anthropic/Claude, Groq, etc.).
+        keep: true
+        rules:
+          from_domains:
+            - openai.com
+            - anthropic.com
+            - groq.com
+            - cohere.com
+            - mistral.ai
+            - x.ai
+            - perplexity.ai
+            - replicate.com
+            - together.ai
+            - huggingface.co
+            - openrouter.ai
+          subject_contains: ["api usage", "api credits", "token usage", "usage summary"]
 
   # --------------------------------------------------------------- Job
   - name: Job & Career

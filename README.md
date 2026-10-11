@@ -74,6 +74,48 @@ that copy — Gmail is touched only to fetch metadata and to apply approved labe
 
 Labels are hierarchical (`Finance/Statements`) and the taxonomy is editable YAML.
 
+## The LangGraph workflow (step by step)
+
+Each "Organize" pass is a small **LangGraph state graph**. The key move is the
+**pause**: the `review` node calls `interrupt()`, the graph checkpoints its
+state, and control returns to the API until *you* decide — then it resumes
+exactly where it left off.
+
+```mermaid
+flowchart TD
+  S((start)) --> I["ingest_node<br/>sync Gmail metadata → messages"]
+  I --> C["classify_node<br/>learned → rules → LLM → proposals"]
+  C --> R["review_node<br/>⏸ interrupt() — wait for your approvals"]
+  R --> A["apply_node<br/>apply APPROVED labels + write audit"]
+  A --> E((end))
+```
+
+| # | Node | Reads | What happens | Writes to state |
+| --- | --- | --- | --- | --- |
+| 1 | `ingest` | `max_messages` | Full or incremental metadata sync into SQLite | `state.sync` |
+| 2 | `classify` | stored messages | 3-state classify → one proposal per message | `state.classify` |
+| 3 | `review` | PENDING + NEEDS_REVIEW | **`interrupt()`** → hands the proposals to the UI and **pauses** | `state.decisions` |
+| 4 | `apply` | APPROVED proposals | `get_or_create_label` + `modify` + audit log | `state.apply` |
+
+**How the pause actually executes:**
+
+1. The graph is compiled with a **checkpointer** and run under a `thread_id`:
+   `graph.invoke({"max_messages": N}, {"configurable": {"thread_id": id}})`.
+2. It runs `ingest` → `classify`, hits `review_node`, which calls
+   `interrupt({"pending": ..., "needs_review": ...})`. That call **returns** to
+   the caller with the payload under `state["__interrupt__"]`; the graph is now
+   parked at a checkpoint.
+3. The UI shows the proposals; you approve/reject/relabel.
+4. The API resumes the *same thread*:
+   `graph.invoke(Command(resume=decisions), {"configurable": {"thread_id": id}})`.
+   `review_node` records the decisions and execution flows into `apply`.
+
+> In practice the API also exposes **store-driven** paths — the full-inbox crawl
+> and a direct `/api/apply` — so bulk review and applying survive browser
+> refreshes and restarts, independent of a live graph. The graph above is the
+> canonical bounded-run path and the home of the human-in-the-loop `interrupt`.
+> Code: [`backend/app/graph/workflow.py`](backend/app/graph/workflow.py).
+
 ## API (selected)
 
 | Method | Endpoint | Purpose |

@@ -111,6 +111,17 @@
   .road li{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 20px;color:var(--ink-2);backdrop-filter:blur(8px)}
   .road li b{color:var(--ink);font-family:var(--head)}
 
+  .flow{position:relative;margin-top:26px;display:grid;gap:16px}
+  .flow::before{content:"";position:absolute;left:19px;top:10px;bottom:10px;width:2px;background:linear-gradient(var(--amber),var(--violet))}
+  .fstep{display:grid;grid-template-columns:40px 1fr;gap:16px;align-items:start;position:relative}
+  .fn{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:700;font-family:var(--head);background:linear-gradient(135deg,var(--amber),var(--violet));box-shadow:var(--shadow);z-index:1}
+  .fc{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
+  .fc h4{margin:0 0 4px;font-size:16px}
+  .tag2{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:rgba(123,91,255,.14);color:var(--violet);padding:1px 7px;border-radius:6px;margin-left:6px;font-weight:600}
+  .fc p{margin:0;color:var(--ink-2);font-size:14.5px}
+  .fstep.pause .fc{border-color:var(--violet);background:color-mix(in srgb,var(--violet) 9%, var(--surface))}
+  .fstep.pause .fn{background:linear-gradient(135deg,var(--violet),#b06bff);font-size:18px}
+
   footer{margin-top:20px;border-top:1px solid var(--line);padding:46px 0;text-align:center;background:var(--surface);backdrop-filter:blur(10px)}
   footer .by{font-size:22px;font-weight:700;font-family:var(--head)}
   footer .small{color:var(--ink-2);font-size:13px;margin-top:3px}
@@ -249,6 +260,20 @@
         <span class="chip">SQLite</span><span class="chip">Claude · Haiku</span><span class="chip">React + Vite</span>
       </div>
     </div>
+  </section>
+
+  <!-- WORKFLOW -->
+  <section class="wrap">
+    <p class="kicker">Execution</p>
+    <h2>The LangGraph workflow</h2>
+    <p class="sub">Every “Organize” pass runs as a small state graph. It literally pauses at the review step and waits for you — then resumes from the same checkpoint.</p>
+    <div class="flow">
+      <div class="fstep"><div class="fn">1</div><div class="fc"><h4>Ingest<span class="tag2">ingest_node</span></h4><p>Full or incremental metadata sync from Gmail into the local store. Never the message body.</p></div></div>
+      <div class="fstep"><div class="fn">2</div><div class="fc"><h4>Classify<span class="tag2">classify_node</span></h4><p>Learned rules → rules → batched LLM → NEEDS_REVIEW. Writes one proposal per email.</p></div></div>
+      <div class="fstep pause"><div class="fn">⏸</div><div class="fc"><h4>Review — you<span class="tag2">review_node · interrupt()</span></h4><p>The graph <strong>pauses</strong> and hands the proposals to the dashboard. It stays parked at a checkpoint until you approve, reject or relabel by sender × label — then resumes with your decisions.</p></div></div>
+      <div class="fstep"><div class="fn">3</div><div class="fc"><h4>Apply<span class="tag2">apply_node</span></h4><p>Creates &amp; attaches labels for everything APPROVED, writes the audit log, and remembers your choices as rules for next time.</p></div></div>
+    </div>
+    <p class="cap">A checkpointer + a per-run thread id let the workflow survive the human pause and resume exactly where it left off — the essence of human-in-the-loop.</p>
   </section>
 
   <!-- SAFETY -->

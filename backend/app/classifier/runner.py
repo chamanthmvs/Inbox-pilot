@@ -57,13 +57,15 @@ def build_classifier(
     return Classifier(taxonomy, rules, llm), taxonomy
 
 
-def classify_messages(store, classifier, metas, result=None) -> ClassifyResult:
+def classify_messages(store, classifier, metas, result=None, on_progress=None, total=None) -> ClassifyResult:
     """
     Classify an explicit list of messages: learned rules → rules → batched LLM →
-    NEEDS_REVIEW. Writes one proposal per message. Reusable by both the normal
-    store pass and the full-inbox background job (per batch).
+    NEEDS_REVIEW. Writes one proposal per message. Emits incremental progress
+    (after the fast phases, then after each LLM batch) when `on_progress` is given.
+    Reusable by the store pass and the full-inbox job.
     """
     result = result or ClassifyResult()
+    total = total if total is not None else len(metas)
     rules = classifier.rules
     llm = classifier.llm
     taxonomy = classifier.taxonomy
@@ -95,26 +97,33 @@ def classify_messages(store, classifier, metas, result=None) -> ClassifyResult:
         else:
             unruled.append(meta)
 
-    # Phase 2 — one batched LLM pass over the rest.
+    # Fast phases done — report progress so the bar jumps immediately.
+    _emit(on_progress, phase="item", done=result.processed, total=total)
+
+    # Phase 2 — batched LLM, one API call per chunk, progress after each.
     llm_on = llm is not None and llm.enabled
-    llm_results = llm.classify_batch(unruled) if (llm_on and unruled) else {}
-    for meta in unruled:
-        hit = llm_results.get(meta.id)
-        if hit is not None:
-            _save(meta, hit.label, "llm", hit.confidence, hit.reason, "PENDING")
-        else:
-            reason = (
-                "no rule matched and the LLM was not confident"
-                if llm_on
-                else "no rule matched and the LLM is disabled (no ANTHROPIC_API_KEY)"
-            )
-            _save(meta, None, "needs_review", 0.0, reason, "NEEDS_REVIEW")
+    chunk_size = getattr(llm, "chunk_size", 20) if llm else 20
+    for i in range(0, len(unruled), chunk_size):
+        chunk = unruled[i : i + chunk_size]
+        hits = llm.classify_batch(chunk) if llm_on else {}
+        for meta in chunk:
+            hit = hits.get(meta.id)
+            if hit is not None:
+                _save(meta, hit.label, "llm", hit.confidence, hit.reason, "PENDING")
+            else:
+                reason = (
+                    "no rule matched and the LLM was not confident"
+                    if llm_on
+                    else "no rule matched and the LLM is disabled (no ANTHROPIC_API_KEY)"
+                )
+                _save(meta, None, "needs_review", 0.0, reason, "NEEDS_REVIEW")
+        _emit(on_progress, phase="item", done=result.processed, total=total)
 
     return result
 
 
 def classify_store(store, classifier, reclassify=False, on_progress=None) -> ClassifyResult:
-    """Classify every undecided message in the store (one batched LLM pass)."""
+    """Classify every undecided message in the store (incremental LLM passes)."""
     todo = []
     skipped = 0
     for meta in store.iter_messages():
@@ -124,7 +133,7 @@ def classify_store(store, classifier, reclassify=False, on_progress=None) -> Cla
             todo.append(meta)
 
     _emit(on_progress, phase="start", done=0, total=len(todo))
-    result = classify_messages(store, classifier, todo)
+    result = classify_messages(store, classifier, todo, on_progress=on_progress, total=len(todo))
     result.skipped_decided = skipped
     _emit(on_progress, phase="done", done=len(todo), total=len(todo))
     return result

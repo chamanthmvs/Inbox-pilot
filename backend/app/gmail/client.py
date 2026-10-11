@@ -81,38 +81,25 @@ class GmailClient:
         )
 
     def get_profile(self):
+        request = self.service.users().getProfile(userId="me")
+        return self._execute_with_retry(request)
 
-        return (
+    def list_messages(self, max_results=100, page_token=None):
+        request = (
             self.service
             .users()
-            .getProfile(
-                userId="me"
+            .messages()
+            .list(
+                userId="me",
+                maxResults=max_results,
+                pageToken=page_token,
             )
-            .execute()
         )
-
-    def list_messages(
-    self,
-    max_results=100,
-    page_token=None
-):
-
-        response = (
-        self.service
-        .users()
-        .messages()
-        .list(
-            userId="me",
-            maxResults=max_results,
-            pageToken=page_token
-        )
-        .execute()
-    )
-
+        response = self._execute_with_retry(request)
         return (
-        response.get("messages", []),
-        response.get("nextPageToken")
-    )
+            response.get("messages", []),
+            response.get("nextPageToken"),
+        )
 
     def _execute_with_retry(self, request, max_retries=8):
         """

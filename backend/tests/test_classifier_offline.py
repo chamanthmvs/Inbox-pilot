@@ -281,14 +281,14 @@ def test_full_ingest():
     with tempfile.TemporaryDirectory() as d:
         store = Store(os.path.join(d, "t.db"))
         events = []
-        summary = full_ingest_and_classify(FG(), store, classifier, on_progress=events.append, batch_size=2)
+        summary = full_ingest_and_classify(FG(), store, classifier, on_progress=events.append, batch_size=2, page_pause=0)
         check("ingested 5", summary["ingested"] == 5)
         check("classified 5", summary["classified"] == 5)
         check("store has 5 messages", store.count_messages() == 5)
         check("5 proposals written", len(store.list_proposals()) == 5)
         check("progress reported total", any(e.get("total") == 5 for e in events))
 
-        s2 = full_ingest_and_classify(FG(), store, classifier, batch_size=2)
+        s2 = full_ingest_and_classify(FG(), store, classifier, batch_size=2, page_pause=0)
         check("resume re-ingests 0", s2["ingested"] == 0)
         check("no duplicate proposals", len(store.list_proposals()) == 5)
         store.close()

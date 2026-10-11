@@ -13,6 +13,8 @@ It reports progress through the same `on_progress(event)` convention used
 elsewhere, with `done` (classified so far) and `total` (mailbox size).
 """
 
+import time
+
 from app.classifier.runner import classify_messages
 from app.gmail.parser import parse_metadata
 
@@ -32,7 +34,12 @@ def full_ingest_and_classify(
     on_progress=None,
     batch_size: int = 40,
     skip_existing: bool = True,
+    page_pause: float = 2.0,
 ):
+    # page_pause throttles throughput to stay under Gmail's per-user per-minute
+    # quota (~15k units/min; each metadata fetch is ~5 units). ~2s per 100-message
+    # page keeps us near ~3k messages/min. Only applied when we actually fetched,
+    # so resuming over already-stored pages stays fast.
     profile = client.get_profile()
     email = profile.get("emailAddress", "")
     anchor_history_id = str(profile.get("historyId", ""))
@@ -83,6 +90,8 @@ def full_ingest_and_classify(
                     flush(batch)
                     batch = []
             flush(batch)
+            if page_pause:
+                time.sleep(page_pause)  # stay under the per-minute quota
         else:
             _emit(on_progress, phase="item", mode="full", done=classified,
                   total=total, ingested=ingested, seen=seen, errors=errors)

@@ -21,3 +21,6 @@ backend/*.db-wal
 backend/*.db-shm
 backend/tests/fixtures/raw_email.json
 .env
+
+# AI-assistant working notes — keep local, not published
+CLAUDE.md

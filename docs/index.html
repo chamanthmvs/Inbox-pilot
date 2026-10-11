@@ -4,195 +4,276 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Inbox Pilot — organize your Gmail, your way</title>
-<meta name="description" content="Human-in-the-loop Gmail organizer. Reads only metadata, proposes category labels (rules + a cheap LLM), applies only what you approve. Built by Chamanth MVS." />
+<meta name="description" content="A human-in-the-loop Gmail organizer. Reads only metadata, proposes category labels (rules + a cheap LLM), applies only what you approve. Built by Chamanth MVS." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#fff7f0; --surface:#ffffff; --ink:#2a2230; --ink-2:#6a6170; --line:#f0e3d8;
+    --bg:#fcf5ef; --surface:rgba(255,255,255,.72); --solid:#ffffff;
+    --ink:#241d2b; --ink-2:#6b6276; --line:rgba(123,91,255,.14);
     --amber:#ff8a5b; --pink:#ff6a88; --violet:#7b5bff; --good:#2ea043;
-    --shadow:0 10px 30px rgba(123,91,255,.10), 0 2px 6px rgba(255,106,136,.08);
-    --radius:18px;
+    --shadow:0 12px 40px rgba(123,91,255,.12), 0 2px 8px rgba(255,106,136,.08);
+    --radius:20px; --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --head:'Space Grotesk',var(--sans);
   }
   @media (prefers-color-scheme:dark){
-    :root{ --bg:#15111c; --surface:#1e1826; --ink:#f3eef7; --ink-2:#b8aec6; --line:#2d2438;
-           --shadow:0 10px 34px rgba(0,0,0,.45); }
+    :root{ --bg:#120e1a; --surface:rgba(30,24,40,.66); --solid:#1e1826;
+           --ink:#f3eef9; --ink-2:#b4aac4; --line:rgba(255,255,255,.10);
+           --shadow:0 14px 44px rgba(0,0,0,.5); }
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;-webkit-font-smoothing:antialiased}
+  body{margin:0;color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(900px 500px at 12% -5%, rgba(255,138,91,.20), transparent 60%),
+      radial-gradient(820px 520px at 105% 8%, rgba(123,91,255,.18), transparent 55%),
+      radial-gradient(700px 600px at 50% 120%, rgba(255,106,136,.14), transparent 60%),
+      var(--bg);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
   a{color:inherit}
-  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
-  .btn{display:inline-block;padding:12px 22px;border-radius:999px;font-weight:700;text-decoration:none;transition:transform .05s,box-shadow .2s}
-  .btn:active{transform:translateY(1px)}
-  .btn.solid{background:#fff;color:#d2415f;box-shadow:0 6px 18px rgba(0,0,0,.15)}
-  .btn.ghost{border:1.5px solid rgba(255,255,255,.65);color:#fff}
+  h1,h2,h3,h4{font-family:var(--head);letter-spacing:-.5px}
+
+  /* sticky nav */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      background:color-mix(in srgb,var(--bg) 72%, transparent);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--head);font-weight:700}
+  .brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--amber),var(--violet));display:inline-block}
+  nav a.gh{font-weight:600;font-size:14px;padding:8px 16px;border-radius:999px;border:1px solid var(--line);text-decoration:none}
 
   /* hero */
-  .hero{background:linear-gradient(135deg,var(--amber) 0%,var(--pink) 45%,var(--violet) 100%);
-        color:#fff;padding:74px 0 90px;position:relative;overflow:hidden}
-  .hero::after{content:"";position:absolute;right:-120px;top:-120px;width:360px;height:360px;border-radius:50%;background:rgba(255,255,255,.10)}
-  .hero::before{content:"";position:absolute;right:60px;bottom:-140px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.07)}
-  .badge{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.18);
-         padding:6px 14px;border-radius:999px;font-size:13px;font-weight:600;margin-bottom:18px}
-  .hero h1{font-size:60px;line-height:1.02;margin:.1em 0 .15em;letter-spacing:-2px;font-weight:800}
-  .hero p.lead{font-size:21px;max-width:640px;opacity:.96;margin:0 0 26px}
-  .cta{display:flex;gap:14px;flex-wrap:wrap}
-  .pills{margin-top:30px;display:flex;gap:10px;flex-wrap:wrap}
-  .pill{background:rgba(255,255,255,.16);padding:7px 14px;border-radius:999px;font-size:13.5px;font-weight:600}
+  .hero{position:relative;overflow:hidden;color:#fff;text-align:center;padding:90px 0 110px;
+        background:linear-gradient(120deg,#ff9a5a,#ff6a88,#9b5bff,#ff6a88,#ff9a5a);
+        background-size:300% 300%;animation:flow 18s ease infinite}
+  @keyframes flow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+  @media (prefers-reduced-motion:reduce){.hero{animation:none}}
+  .hero::before{content:"";position:absolute;inset:0;background:
+     radial-gradient(1200px 300px at 50% -40%, rgba(255,255,255,.35), transparent 60%);}
+  .hero .wrap{position:relative}
+  .pilot{font-size:48px;filter:drop-shadow(0 6px 14px rgba(0,0,0,.25))}
+  .badge{display:inline-flex;gap:8px;background:rgba(255,255,255,.2);padding:7px 16px;border-radius:999px;font-size:13px;font-weight:600;margin:14px 0 20px;backdrop-filter:blur(6px)}
+  .hero h1{font-size:72px;line-height:1;margin:.05em 0 .2em;font-weight:700;text-shadow:0 4px 30px rgba(0,0,0,.18)}
+  .hero p.lead{font-size:21px;max-width:660px;margin:0 auto 30px;opacity:.97}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:13px 26px;border-radius:999px;font-weight:700;text-decoration:none;transition:transform .08s, box-shadow .2s}
+  .btn:active{transform:translateY(1px)}
+  .btn.solid{background:#fff;color:#d2415f;box-shadow:0 10px 26px rgba(0,0,0,.2)}
+  .btn.solid:hover{box-shadow:0 14px 32px rgba(0,0,0,.28)}
+  .btn.ghost{border:1.5px solid rgba(255,255,255,.7);color:#fff}
+  .wave{position:absolute;bottom:-1px;left:0;width:100%;display:block}
 
-  /* sections */
-  section{padding:58px 0}
-  h2{font-size:30px;letter-spacing:-.6px;margin:0 0 6px}
-  .sub{color:var(--ink-2);margin:0 0 28px;font-size:17px}
-  .quote{border-left:4px solid var(--pink);padding:6px 0 6px 18px;margin:22px 0;color:var(--ink);font-size:19px;font-weight:600}
+  section{padding:62px 0}
+  .kicker{color:var(--pink);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12.5px;margin:0 0 8px}
+  h2{font-size:34px;margin:0 0 8px}
+  .sub{color:var(--ink-2);margin:0 0 30px;font-size:17px;max-width:680px}
+  p.body{font-size:17px}
+  .quote{border-left:4px solid;border-image:linear-gradient(var(--amber),var(--violet)) 1;padding:8px 0 8px 20px;margin:22px 0;font-size:20px;font-weight:600;font-family:var(--head)}
 
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-  @media(max-width:820px){.grid{grid-template-columns:1fr}}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);
+        backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .15s, box-shadow .2s}
+  .card:hover{transform:translateY(-3px);box-shadow:0 20px 50px rgba(123,91,255,.18)}
   .card .ico{font-size:26px}
-  .card h3{margin:10px 0 6px;font-size:18px}
+  .card h3{margin:12px 0 6px;font-size:18px}
   .card p{margin:0;color:var(--ink-2);font-size:15px}
 
-  /* steps */
-  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-  @media(max-width:820px){.steps{grid-template-columns:1fr}}
-  .step{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);position:relative}
-  .step .n{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;
-           background:linear-gradient(135deg,var(--amber),var(--violet));margin-bottom:10px}
-  .step h4{margin:0 0 4px;font-size:16px}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:860px){.steps{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.steps{grid-template-columns:1fr}}
+  .step{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);backdrop-filter:blur(10px)}
+  .step .n{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:700;color:#fff;font-family:var(--head);background:linear-gradient(135deg,var(--amber),var(--violet));margin-bottom:12px}
+  .step h4{margin:0 0 5px;font-size:17px}
   .step p{margin:0;color:var(--ink-2);font-size:14px}
 
-  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
-  th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line);font-size:15px}
-  th{background:rgba(255,106,136,.08);font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-2)}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:28px;padding:34px;box-shadow:var(--shadow);backdrop-filter:blur(12px)}
+  .diagram{background:var(--solid);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.06)}
+  .diagram svg{width:100%;height:auto;display:block}
+  .cap{color:var(--ink-2);font-size:13.5px;margin-top:12px;text-align:center}
+
+  .tlist{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:24px}
+  @media(max-width:860px){.tlist{grid-template-columns:1fr}}
+  .tlist .card h3{font-size:16px}
+  code{background:rgba(123,91,255,.14);padding:1px 6px;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);backdrop-filter:blur(10px)}
+  th,td{text-align:left;padding:14px 18px;border-bottom:1px solid var(--line);font-size:15px}
+  th{background:rgba(255,106,136,.1);font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)}
   tr:last-child td{border-bottom:none}
   .tick{color:var(--good);font-weight:800}
 
-  .stack{display:flex;gap:10px;flex-wrap:wrap}
-  .chip{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 15px;font-size:14px;font-weight:600;box-shadow:var(--shadow)}
-
+  .stack{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+  .chip{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:600;box-shadow:var(--shadow);backdrop-filter:blur(8px)}
   .road{list-style:none;padding:0;margin:0;display:grid;gap:12px}
-  .road li{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px;color:var(--ink-2)}
-  .road li b{color:var(--ink)}
+  .road li{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 20px;color:var(--ink-2);backdrop-filter:blur(8px)}
+  .road li b{color:var(--ink);font-family:var(--head)}
 
-  footer{background:var(--surface);border-top:1px solid var(--line);padding:40px 0;text-align:center}
-  footer .by{font-size:20px;font-weight:800}
-  footer .small{color:var(--ink-2);font-size:13px;margin-top:2px}
-  footer a.src{display:inline-block;margin-top:16px;color:var(--violet);font-weight:700;text-decoration:none}
-  code{background:rgba(123,91,255,.12);padding:2px 7px;border-radius:6px;font-size:14px}
-  pre{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;overflow:auto;box-shadow:var(--shadow)}
-  pre code{background:none;padding:0}
+  footer{margin-top:20px;border-top:1px solid var(--line);padding:46px 0;text-align:center;background:var(--surface);backdrop-filter:blur(10px)}
+  footer .by{font-size:22px;font-weight:700;font-family:var(--head)}
+  footer .small{color:var(--ink-2);font-size:13px;margin-top:3px}
+  footer a.src{display:inline-block;margin-top:18px;color:var(--violet);font-weight:700;text-decoration:none}
 </style>
 </head>
 <body>
 
+  <nav><div class="wrap">
+    <span class="brand"><span class="dot"></span> Inbox&nbsp;Pilot</span>
+    <a class="gh" href="https://github.com/chamanthmvs/Inbox-pilot">GitHub ↗</a>
+  </div></nav>
+
   <header class="hero">
     <div class="wrap">
-      <span class="badge">✈️ Human-in-the-loop · metadata-only · never deletes</span>
-      <h1>Inbox Pilot</h1>
-      <p class="lead">Organize your Gmail <em>your way</em>. The pilot proposes labels, <strong>you</strong> approve, and it flies — bulk-sorting thousands of emails while you stay in full control.</p>
+      <div class="pilot">✈️</div>
+      <div class="badge">human-in-the-loop · metadata-only · never deletes</div>
+      <h1>Inbox&nbsp;Pilot</h1>
+      <p class="lead">Organize your Gmail <em>your way</em>. The pilot proposes labels, <strong>you</strong> approve, and it flies — sorting thousands of emails while you stay in full control.</p>
       <div class="cta">
         <a class="btn solid" href="https://github.com/chamanthmvs/Inbox-pilot">View on GitHub →</a>
-        <a class="btn ghost" href="#quickstart">Quickstart</a>
-      </div>
-      <div class="pills">
-        <span class="pill">Rules + cheap LLM</span>
-        <span class="pill">Bulk review by sender</span>
-        <span class="pill">Learns as you go</span>
-        <span class="pill">Fully audited</span>
+        <a class="btn ghost" href="#how">How it works</a>
       </div>
     </div>
+    <svg class="wave" viewBox="0 0 1440 90" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0,60 C360,100 1080,10 1440,55 L1440,90 L0,90 Z" fill="var(--bg)"/>
+    </svg>
   </header>
 
-  <section id="why" class="wrap">
-    <h2>🌱 Why I built this</h2>
-    <p class="sub">Every good project starts with a real itch.</p>
-    <p>I had a <strong>huge, overflowing Gmail</strong> — tens of thousands of messages, most of it job alerts,
-      promotions, and bank notifications I never needed. I wanted to <strong>organize what matters and clear out
-      what doesn't to reclaim space</strong>, but doing that by hand across 20,000+ emails is impossible — and I
-      didn't trust a bot to silently touch my mailbox.</p>
-    <p class="quote">So I built Inbox Pilot: it does the heavy lifting, while I approve every change.</p>
-    <p>It reviews mail by <em>sender + category</em>, so one click handles thousands at once. It learns from my
-      decisions so it keeps getting faster. And in v1 it's strictly <strong>non-destructive</strong> — labels only,
-      never deletes. The "declutter and delete to free space" part is on the roadmap as a human-approved step,
-      never an automatic one.</p>
+  <!-- PAIN -->
+  <section class="wrap">
+    <p class="kicker">Sound familiar?</p>
+    <h2>The pain</h2>
+    <p class="sub">What a big inbox actually feels like.</p>
+    <div class="grid">
+      <div class="card"><div class="ico">📥</div><h3>20,000 unread, mostly noise</h3><p>Job alerts, promotions, bank pings and newsletters bury the few emails you actually care about.</p></div>
+      <div class="card"><div class="ico">🧹</div><h3>Cleaning it is endless</h3><p>Sorting and deleting by hand, a few at a time, would take weeks — so it never happens.</p></div>
+      <div class="card"><div class="ico">🤖</div><h3>You can't trust a silent bot</h3><p>Anything that auto-labels or deletes your mail without asking is a non-starter. It's your inbox.</p></div>
+    </div>
   </section>
 
-  <section id="features" style="background:rgba(255,138,91,.06)">
-    <div class="wrap">
-      <h2>✨ What it does</h2>
-      <p class="sub">Powerful automation, with a human firmly in the loop.</p>
-      <div class="grid">
-        <div class="card"><div class="ico">🧲</div><h3>Metadata-only ingest</h3><p>Reads sender, subject, date, and snippet. It never reads or stores the body of your emails.</p></div>
-        <div class="card"><div class="ico">🏷️</div><h3>Smart labels, 3 ways</h3><p>Deterministic rules → a cheap batched LLM → <code>NEEDS_REVIEW</code>. It refuses to guess when unsure.</p></div>
-        <div class="card"><div class="ico">🧑‍✈️</div><h3>You're the pilot</h3><p>Nothing is applied to Gmail until you approve it. Flip a LIVE ⇄ DRY-RUN toggle anytime.</p></div>
-        <div class="card"><div class="ico">📦</div><h3>Bulk review at scale</h3><p>Approve a whole <em>sender × label</em> group in one click. Expand to inspect, or relabel first.</p></div>
-        <div class="card"><div class="ico">🧠</div><h3>Learns as you go</h3><p>Every approval becomes a rule — that sender is classified for free next time.</p></div>
-        <div class="card"><div class="ico">🛡️</div><h3>Safe by design</h3><p>Label-only, reversible, fully audited, resilient to Gmail rate limits.</p></div>
+  <!-- PROBLEM -->
+  <section class="wrap">
+    <div class="panel">
+      <p class="kicker">The problem</p>
+      <h2>Fully manual is impossible. Fully automatic isn't safe.</h2>
+      <p class="body">I had a huge, overflowing Gmail and wanted to <strong>organize what matters and clear out what
+        doesn't to reclaim space</strong>. Doing it by hand across tens of thousands of messages is impractical — but
+        handing a bot the keys to silently relabel or delete my mail is exactly what I <em>didn't</em> want.</p>
+      <p class="quote">The real need: automation that does the work, with a human approving every change.</p>
+    </div>
+  </section>
+
+  <!-- SOLUTION -->
+  <section class="wrap" id="how">
+    <p class="kicker">How we solve it</p>
+    <h2>You approve patterns, not emails</h2>
+    <p class="sub">20,000 emails come from only a few hundred senders — so you make dozens of decisions, not twenty thousand.</p>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><h4>Ingest</h4><p>Pulls mailbox <em>metadata</em> (never the body) in fast, resumable batches — rate-limit proof.</p></div>
+      <div class="step"><div class="n">2</div><h4>Classify</h4><p>Sorts each email into a tidy category: rules first, then a cheap AI, then “ask me”.</p></div>
+      <div class="step"><div class="n">3</div><h4>Review</h4><p>Approve a whole <strong>sender × label</strong> group in one click. Expand to inspect; relabel if needed.</p></div>
+      <div class="step"><div class="n">4</div><h4>Apply</h4><p>Approved labels land in Gmail and are logged. It learns your choices for next time.</p></div>
+    </div>
+  </section>
+
+  <!-- TECHNICAL -->
+  <section class="wrap">
+    <div class="panel">
+      <p class="kicker">Under the hood</p>
+      <h2>The technical view</h2>
+      <p class="sub">Ingest once into a local store; classify, review and apply off that copy. Gmail is touched only to read metadata and to apply approved labels.</p>
+
+      <div class="diagram">
+        <svg viewBox="0 0 980 300" role="img" aria-label="Inbox Pilot data flow">
+          <defs>
+            <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9a90a6"/></marker>
+            <marker id="ahv" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7b5bff"/></marker>
+          </defs>
+          <style>
+            .t{font-family:'Space Grotesk','Segoe UI',Arial,sans-serif;fill:#241d2b}
+            .tt{font-weight:700;font-size:14px}
+            .ts{font-size:11.5px;fill:#6b6276;font-family:'Inter',sans-serif}
+            .ar{stroke:#9a90a6;stroke-width:2;fill:none}
+            .loop{stroke:#7b5bff;stroke-width:2;fill:none;stroke-dasharray:5 5}
+            .ll{font-size:11px;fill:#7b5bff;font-weight:600;font-family:'Inter',sans-serif}
+          </style>
+          <path class="ar" d="M860,60 L860,22 L95,22 L95,58" marker-end="url(#ah)"/>
+          <text class="t ts" x="300" y="16">apply approved labels to Gmail</text>
+          <path class="loop" d="M665,150 L665,186 L473,186 L473,150" marker-end="url(#ahv)"/>
+          <text class="t ll" x="500" y="200">learned rules → auto next time</text>
+
+          <rect x="20"  y="62" width="150" height="84" rx="14" fill="#fff" stroke="#ff8a5b" stroke-width="2"/>
+          <text class="t tt" x="95"  y="98"  text-anchor="middle">Gmail API</text>
+          <text class="t ts" x="95"  y="118" text-anchor="middle">metadata only</text>
+          <rect x="212" y="62" width="150" height="84" rx="14" fill="#fff" stroke="#ff8a5b" stroke-width="2"/>
+          <text class="t tt" x="287" y="94"  text-anchor="middle">Ingest</text>
+          <text class="t ts" x="287" y="113" text-anchor="middle">batched</text>
+          <text class="t ts" x="287" y="128" text-anchor="middle">resumable</text>
+          <rect x="404" y="62" width="150" height="84" rx="14" fill="#fff" stroke="#ff6a88" stroke-width="2"/>
+          <text class="t tt" x="479" y="92"  text-anchor="middle">Classify</text>
+          <text class="t ts" x="479" y="110" text-anchor="middle">learned → rules</text>
+          <text class="t ts" x="479" y="125" text-anchor="middle">→ LLM → review</text>
+          <rect x="596" y="62" width="150" height="84" rx="14" fill="#fff" stroke="#7b5bff" stroke-width="2"/>
+          <text class="t tt" x="671" y="94"  text-anchor="middle">Review · you</text>
+          <text class="t ts" x="671" y="113" text-anchor="middle">group by</text>
+          <text class="t ts" x="671" y="128" text-anchor="middle">sender × label</text>
+          <rect x="788" y="62" width="150" height="84" rx="14" fill="#fff" stroke="#2ea043" stroke-width="2"/>
+          <text class="t tt" x="863" y="94"  text-anchor="middle">Apply</text>
+          <text class="t ts" x="863" y="113" text-anchor="middle">labels +</text>
+          <text class="t ts" x="863" y="128" text-anchor="middle">audit log</text>
+
+          <line class="ar" x1="170" y1="104" x2="210" y2="104" marker-end="url(#ah)"/>
+          <line class="ar" x1="362" y1="104" x2="402" y2="104" marker-end="url(#ah)"/>
+          <line class="ar" x1="554" y1="104" x2="594" y2="104" marker-end="url(#ah)"/>
+          <line class="ar" x1="746" y1="104" x2="786" y2="104" marker-end="url(#ah)"/>
+
+          <rect x="150" y="238" width="680" height="46" rx="12" fill="#faf6ff" stroke="#7b5bff" stroke-width="1.5"/>
+          <text class="t ts" x="490" y="266" text-anchor="middle" fill="#241d2b" font-size="12.5">SQLite store · messages · proposals · learned_rules · audit_log · sync_state</text>
+          <line x1="287" y1="146" x2="287" y2="238" stroke="#cdbfe0" stroke-width="2" stroke-dasharray="4 4"/>
+          <line x1="479" y1="146" x2="479" y2="238" stroke="#cdbfe0" stroke-width="2" stroke-dasharray="4 4"/>
+          <line x1="671" y1="206" x2="671" y2="238" stroke="#cdbfe0" stroke-width="2" stroke-dasharray="4 4"/>
+          <line x1="863" y1="146" x2="863" y2="238" stroke="#cdbfe0" stroke-width="2" stroke-dasharray="4 4"/>
+        </svg>
+        <p class="cap">Actual data flow. The dashed violet arrow is the learning loop — each approval becomes a rule that classifies that sender automatically next time.</p>
+      </div>
+
+      <div class="tlist">
+        <div class="card"><h3>3-state classifier (never guesses)</h3><p><code>learned</code> → <code>rules</code> (whole-word, sender-domain weighted) → <code>LLM</code> (Claude Haiku, batched ~20/call) → <code>NEEDS_REVIEW</code>. Taxonomy is editable YAML; labels are hierarchical.</p></div>
+        <div class="card"><h3>Human-in-the-loop workflow</h3><p>A LangGraph graph pauses at an approval step via <code>interrupt()</code>; approvals &amp; apply are also exposed directly over the API so review survives refreshes and restarts.</p></div>
+        <div class="card"><h3>Resilient full-inbox crawl</h3><p>Batched Gmail requests (~50/round-trip), retries on 403/429/5xx with backoff, skips bad items, resumes where it left off — runs in the background.</p></div>
+        <div class="card"><h3>Safe, auditable data model</h3><p>SQLite tables for metadata, proposals, learned rules and an append-only audit log. Scope is <code>gmail.modify</code> — it can label but <strong>cannot delete</strong>.</p></div>
+      </div>
+      <div class="stack">
+        <span class="chip">Python</span><span class="chip">FastAPI + SSE</span><span class="chip">LangGraph</span>
+        <span class="chip">SQLite</span><span class="chip">Claude · Haiku</span><span class="chip">React + Vite</span>
       </div>
     </div>
   </section>
 
-  <section id="how" class="wrap">
-    <h2>🛠️ How it works</h2>
-    <p class="sub">You approve <em>patterns</em>, not emails — 20,000 messages come from only a few hundred senders.</p>
-    <div class="steps">
-      <div class="step"><div class="n">1</div><h4>Ingest</h4><p>Pulls mailbox metadata in fast, resumable batches — rate-limit proof.</p></div>
-      <div class="step"><div class="n">2</div><h4>Classify</h4><p>Rules → cheap LLM → needs-review, into a fixed, editable taxonomy.</p></div>
-      <div class="step"><div class="n">3</div><h4>Review</h4><p>Bulk-approve by sender × label on a clean dashboard. One click, thousands sorted.</p></div>
-      <div class="step"><div class="n">4</div><h4>Apply</h4><p>Approved labels land in Gmail and are logged. It learns for next time.</p></div>
-    </div>
-  </section>
-
-  <section id="quickstart" style="background:rgba(123,91,255,.06)">
-    <div class="wrap">
-      <h2>🚀 Quickstart</h2>
-      <p class="sub">Python 3.13 · Node 18+ · a Google OAuth <code>credentials.json</code>.</p>
-      <pre><code># install
-cd backend &amp;&amp; python3 -m venv .venv &amp;&amp; source .venv/bin/activate &amp;&amp; pip install -r requirements.txt
-cd ../frontend &amp;&amp; npm install
-
-# (recommended) enable the cheap LLM classifier
-cp backend/.env.example backend/.env    # then add ANTHROPIC_API_KEY
-
-# run both, then open http://localhost:5173
-uvicorn app.api.main:app --reload       # from backend/
-npm run dev                              # from frontend/</code></pre>
-      <p class="sub" style="margin-top:14px">In VS Code: Run and Debug → <strong>“▶ Run App (backend + frontend)”</strong> starts both at once.</p>
-    </div>
-  </section>
-
-  <section id="safety" class="wrap">
-    <h2>🔒 Safety &amp; privacy</h2>
-    <p class="sub">A tool that touches your mailbox has to earn trust.</p>
+  <!-- SAFETY -->
+  <section class="wrap">
+    <p class="kicker">Trust</p>
+    <h2>Safety &amp; privacy</h2>
+    <p class="sub">A tool that touches your mailbox has to earn it.</p>
     <table>
       <tr><th>Guarantee</th><th>How</th></tr>
       <tr><td>No message bodies stored</td><td>Ingests Gmail <em>metadata</em> only</td></tr>
       <tr><td>Nothing changes without you</td><td>Human approval required before any label is applied</td></tr>
-      <tr><td>No deletion (v1)</td><td><code>gmail.modify</code> scope — it cannot permanently delete mail</td></tr>
-      <tr><td>Everything reversible</td><td>Labels removable in one click; every change is audited <span class="tick">✔</span></td></tr>
-      <tr><td>Secrets stay local</td><td>Credentials, tokens, the local store &amp; <code>.env</code> are git-ignored</td></tr>
+      <tr><td>No deletion (v1)</td><td><code>gmail.modify</code> scope cannot permanently delete mail</td></tr>
+      <tr><td>Everything reversible</td><td>Labels removable in one click; every apply is audited <span class="tick">✔</span></td></tr>
+      <tr><td>Secrets stay local</td><td>Credentials, tokens, the store &amp; <code>.env</code> are git-ignored</td></tr>
     </table>
   </section>
 
-  <section id="stack" style="background:rgba(255,106,136,.06)">
-    <div class="wrap">
-      <h2>🧱 Tech stack</h2>
-      <p class="sub">Service-first backend, thin reactive UI.</p>
-      <div class="stack">
-        <span class="chip">Python</span><span class="chip">FastAPI</span><span class="chip">LangGraph</span>
-        <span class="chip">SQLite</span><span class="chip">Anthropic Claude (Haiku)</span>
-        <span class="chip">React + Vite</span><span class="chip">Server-Sent Events</span>
-      </div>
-    </div>
-  </section>
-
-  <section id="roadmap" class="wrap">
-    <h2>🗺️ Roadmap</h2>
+  <!-- ROADMAP -->
+  <section class="wrap">
+    <p class="kicker">What's next</p>
+    <h2>Roadmap</h2>
     <ul class="road">
       <li><b>Declutter &amp; reclaim space</b> — human-approved archive / delete for noise buckets (the original motivation), always opt-in.</li>
       <li><b>Auto-pilot</b> — fully auto-label trusted senders after first approval.</li>
-      <li><b>More control</b> — per-row relabel inside a group, multi-account support, Postgres for teams.</li>
+      <li><b>More control</b> — per-row relabel within a group, multi-account support, Postgres for teams.</li>
     </ul>
   </section>
 

@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Project-local Node toolchain (self-contained install; not part of the repo)
+.tools/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node / frontend build
+node_modules/
+dist/
+
+# Secrets & local data (also covered in backend/.gitignore)
+backend/credentials.json
+backend/token.json
+backend/*.db
+backend/*.db-wal
+backend/*.db-shm
+backend/tests/fixtures/raw_email.json
+.env

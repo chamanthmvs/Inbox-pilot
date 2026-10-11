@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pycache/
+token.json
+credentials.json
+.env
+
+# Local mailbox store — contains mailbox metadata (sensitive). Never commit.
+*.db
+*.db-wal
+*.db-shm
+mailbox.db
+
+# Captured sample message used as a test fixture (REAL email = personal data).
+# Keep it ignored until a redacted version is committed for Stage 6 so tests run
+# after a clone.
+raw_email.json
+tests/fixtures/raw_email.json

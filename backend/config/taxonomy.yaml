@@ -1,0 +1,291 @@
+# ---------------------------------------------------------------------------
+# Gmail organizing taxonomy  (DATA, not code)
+# ---------------------------------------------------------------------------
+# Add a category or sub-label with a one-line edit — no code change.
+#
+# Hierarchy: "Parent/Child" nests in Gmail (the slash). The classifier applies
+# the MOST SPECIFIC label it is confident about; if unsure → NEEDS_REVIEW.
+#
+# rules (all matched as WHOLE WORDS, case-insensitive; the classifier prefers a
+# sender-domain match > sender-substring > subject-word, and a sub-label > its
+# parent):
+#   from_domains     : the sender's email domain (exact or a parent suffix)
+#   from_contains    : a whole word in the sender
+#   subject_contains : a whole word/phrase in the subject
+#
+# Keep tokens SPECIFIC. Generic words ("report", "fee", "balance", "irs") cause
+# wrong matches — prefer phrases ("lab report", "account statement").
+# ---------------------------------------------------------------------------
+
+version: 2
+
+categories:
+  # --------------------------------------------------------------- Bank
+  - name: Bank
+    description: Messages from your banks.
+    keep: true
+    rules:
+      from_domains:
+        - idfcfirstbank.com
+        - idfcfirst.bank.in
+        - hdfcbank.com
+        - hdfcbank.net
+        - icicibank.com
+        - sbi.co.in
+        - axisbank.com
+        - kotak.com
+        - yesbank.in
+        - pnb.co.in
+        - bankofbaroda.in
+        - indusind.com
+    children:
+      - name: Bank/Alerts & Notifications
+        description: Transaction alerts, debit/credit and e-mandate notices.
+        keep: true
+        rules:
+          subject_contains:
+            - "debit alert"
+            - "credit alert"
+            - "transaction alert"
+            - "e-mandate"
+            - "mandate"
+            - "imps"
+            - "neft"
+            - "amount debited"
+            - "amount credited"
+            - "has been debited"
+            - "has been credited"
+      - name: Bank/Support Tickets
+        description: Tickets, complaints, and service requests you raised with a bank.
+        keep: true
+        rules:
+          subject_contains:
+            - "ticket"
+            - "complaint"
+            - "grievance"
+            - "service request"
+            - "case id"
+            - "interaction id"
+            - "reference number"
+      - name: Bank/Statements
+        description: Bank and card account statements.
+        keep: true
+        rules:
+          subject_contains:
+            - "account statement"
+            - "bank statement"
+            - "card statement"
+
+  # --------------------------------------------------------------- Finance
+  - name: Finance
+    description: Money and financial matters (non-bank).
+    keep: true
+    children:
+      - name: Finance/Statements
+        description: Non-bank financial statements and balances.
+        keep: true
+        rules:
+          subject_contains: ["e-statement", "monthly statement"]
+      - name: Finance/Bills & Payments
+        description: Invoices, due payments, and utility/service bills.
+        keep: true
+        rules:
+          subject_contains: ["invoice", "amount due", "payment due", "due date", "bill payment"]
+      - name: Finance/Tax & Government
+        description: Tax documents and official government notices.
+        keep: true
+        rules:
+          from_domains: ["gov.in", "gov", "incometax.gov.in"]
+          from_contains: ["incometax"]
+          subject_contains: ["income tax", "form 16", "tds", "itr", "gst"]
+      - name: Finance/Investments & Insurance
+        description: Mutual funds, brokerage, portfolio, SIP, and insurance policies.
+        keep: true
+        rules:
+          from_domains:
+            - zerodha.net
+            - zerodha.com
+            - kfintech.com
+            - camsonline.com
+            - motilaloswal.com
+            - mfcentral.com
+            - groww.in
+          subject_contains:
+            - "portfolio"
+            - "mutual fund"
+            - "redemption"
+            - "folio"
+            - "sip"
+            - "nav"
+            - "dividend"
+            - "premium"
+            - "policy"
+      - name: Finance/Securities & Demat
+        description: Stock exchange, depository, and demat holdings.
+        keep: true
+        rules:
+          from_domains: ["nse.co.in", "nseindia.com", "bseindia.com", "cdslindia.com", "nsdl.co.in"]
+          subject_contains: ["securities", "demat", "contract note", "holding statement"]
+
+  # --------------------------------------------------------------- Job
+  - name: Job & Career
+    description: Employment, hiring, and work-identity mail.
+    keep: true
+    children:
+      - name: Job/Offers & Documents
+        description: Offer letters, employment contracts, onboarding paperwork.
+        keep: true
+        rules:
+          subject_contains: ["offer letter", "offer of employment", "onboarding", "appointment letter"]
+      - name: Job/Payroll & HR
+        description: Payslips, benefits, leave, and HR communications.
+        keep: true
+        rules:
+          subject_contains: ["payslip", "salary slip", "payroll", "leave balance"]
+      - name: Job/Applications & Alerts
+        description: Job alerts, recruiter outreach, and recommendations.
+        keep: false
+        rules:
+          from_domains: ["naukri.com", "linkedin.com", "indeed.com", "glassdoor.com", "monster.com"]
+          subject_contains: ["job alert", "openings for", "jobs for you", "recommended jobs"]
+
+  # --------------------------------------------------------------- Shopping
+  - name: Shopping
+    description: Purchases and e-commerce.
+    keep: true
+    children:
+      - name: Shopping/Orders & Delivery
+        description: Order confirmations, shipping and delivery tracking.
+        keep: true
+        rules:
+          from_domains: ["flipkart.com", "rmt.flipkart.com", "amazon.in", "amazon.com", "myntra.com"]
+          subject_contains: ["your order", "order confirmed", "order placed", "shipped", "out for delivery", "delivered"]
+      - name: Shopping/Returns & Refunds
+        description: Returns, refunds, and cancellations.
+        keep: true
+        rules:
+          subject_contains: ["refund", "return", "cancelled", "cancellation"]
+      - name: Shopping/Receipts & Warranties
+        description: Purchase receipts and warranty documents.
+        keep: true
+        rules:
+          subject_contains: ["receipt", "warranty", "tax invoice"]
+
+  # --------------------------------------------------------------- Travel
+  - name: Travel
+    description: Trips, transport, and stays.
+    keep: true
+    children:
+      - name: Travel/Bookings
+        description: Flight, hotel, train, and car booking confirmations.
+        keep: true
+        rules:
+          subject_contains: ["booking confirmed", "reservation", "booking id", "pnr", "e-ticket"]
+      - name: Travel/Itineraries & Check-in
+        description: Itineraries, boarding passes, and check-in reminders.
+        keep: true
+        rules:
+          subject_contains: ["itinerary", "check-in", "boarding pass", "web check-in"]
+      - name: Travel/Loyalty & Miles
+        description: Frequent-flyer, rewards, and miles balances.
+        keep: true
+        rules:
+          subject_contains: ["frequent flyer", "miles balance", "reward points"]
+
+  # --------------------------------------------------------------- Health
+  - name: Health
+    description: Medical and wellbeing.
+    keep: true
+    children:
+      - name: Health/Appointments
+        description: Doctor visits, reminders, and scheduling.
+        keep: true
+        rules:
+          subject_contains: ["appointment", "your visit", "consultation"]
+      - name: Health/Records & Results
+        description: Lab results, prescriptions, and medical reports.
+        keep: true
+        rules:
+          subject_contains: ["lab report", "test result", "prescription", "medical report", "diagnostic"]
+      - name: Health/Pharmacy & Insurance
+        description: Pharmacy orders and health insurance/claims.
+        keep: true
+        rules:
+          subject_contains: ["pharmacy", "health insurance", "mediclaim", "claim settled"]
+
+  # --------------------------------------------------------------- Education
+  - name: Education
+    description: Learning and academics.
+    keep: true
+    children:
+      - name: Education/Courses & Learning
+        description: Course updates, assignments, and learning platforms.
+        keep: true
+        rules:
+          from_domains: ["coursera.org", "udemy.com", "edx.org", "greatlearning.in"]
+          subject_contains: ["assignment", "course", "lecture", "enrollment"]
+      - name: Education/Certifications
+        description: Certificates and exam results.
+        keep: true
+        rules:
+          subject_contains: ["certificate", "certification", "exam result"]
+      - name: Education/School & University
+        description: School/university admin and official notices.
+        keep: true
+        rules:
+          subject_contains: ["semester", "tuition fee", "school fee", "admission", "transcript"]
+
+  # --------------------------------------------------------------- Accounts
+  - name: Accounts & Security
+    description: Account lifecycle and security for online services.
+    keep: true
+    children:
+      - name: Accounts/Security Alerts
+        description: New sign-ins, password resets, and 2FA notices.
+        keep: true
+        rules:
+          subject_contains: ["new sign-in", "password reset", "security alert", "suspicious activity"]
+      - name: Accounts/Verification Codes
+        description: One-time codes and email confirmations.
+        keep: false
+        rules:
+          subject_contains: ["verification code", "one-time password", "otp", "verify your email", "confirm your email"]
+      - name: Accounts/Subscriptions
+        description: SaaS and streaming account, billing, and renewal notices.
+        keep: true
+        rules:
+          subject_contains: ["subscription", "renewal", "your plan", "membership"]
+
+  # --------------------------------------------------------------- Donations
+  - name: Donations
+    description: Charity, NGO, and fundraising appeals and receipts.
+    keep: false
+    rules:
+      from_domains: ["akshayapatra.org", "cry.org", "giveindia.org", "goonj.org"]
+      subject_contains: ["donate", "donation", "contribute", "fundraiser", "feed a child"]
+
+  # --------------------------------------------------------------- catch-all topics
+  - name: Personal
+    description: Real people and one-to-one conversations.
+    keep: true
+
+  - name: Social
+    description: Social-network notifications and activity.
+    keep: false
+    rules:
+      from_domains: ["facebookmail.com", "twitter.com", "x.com", "instagram.com", "quora.com", "reddit.com", "linkedin.com"]
+
+  - name: Newsletters
+    description: Digests and content you opted into.
+    keep: true
+    rules:
+      subject_contains: ["newsletter", "digest", "weekly roundup", "this week"]
+
+  - name: Promotions
+    description: Marketing, sales, and deals.
+    keep: false
+    rules:
+      subject_contains: ["sale", "% off", "coupon", "discount", "limited time", "flash sale", "offer ends"]
+
+# Workflow state (NOT a topic): low-confidence messages become NEEDS_REVIEW.
+needs_review_label: "Needs Review"

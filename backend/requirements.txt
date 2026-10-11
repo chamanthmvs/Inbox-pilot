@@ -1,0 +1,10 @@
+google-api-python-client
+google-auth
+google-auth-oauthlib
+pydantic
+PyYAML
+anthropic
+langgraph
+fastapi
+uvicorn[standard]
+python-dotenv

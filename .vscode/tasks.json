@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "backend: install deps",
+      "type": "shell",
+      "command": "./.venv/bin/pip install -r requirements.txt",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "frontend: install deps",
+      "type": "shell",
+      "command": "npm install",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend",
+        "env": { "PATH": "${workspaceFolder}/.tools/node/bin:${env:PATH}" }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Setup (install everything)",
+      "dependsOrder": "sequence",
+      "dependsOn": ["backend: install deps", "frontend: install deps"],
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: run tests",
+      "type": "shell",
+      "command": "for t in ingestion classifier workflow api; do ./.venv/bin/python tests/test_${t}_offline.py; done",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "problemMatcher": []
+    }
+  ]
+}

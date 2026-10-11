@@ -1,0 +1,22 @@
+{
+  "id": "SAMPLE000000001",
+  "threadId": "SAMPLETHREAD0001",
+  "labelIds": ["UNREAD", "CATEGORY_UPDATES", "INBOX"],
+  "snippet": "We found jobs matching your profile. Top openings this week for you.",
+  "internalDate": "1790912299000",
+  "sizeEstimate": 30342,
+  "historyId": "15224046",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      { "name": "From", "value": "Naukri <alerts@example.com>" },
+      { "name": "To", "value": "user@example.com" },
+      { "name": "Subject", "value": "Top Openings for Data Analyst, Data Scientist" },
+      { "name": "Date", "value": "Fri, 2 Oct 2026 09:08:19 +0530 (IST)" }
+    ],
+    "body": { "size": 0 },
+    "parts": []
+  }
+}

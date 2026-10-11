@@ -80,7 +80,8 @@ export default function App() {
         es.close();
       } else if (data.type === "error") {
         setPhase("idle");
-        setError(data.message || "run failed");
+        setError((data.message || "run failed") + " — progress so far is saved; re-run to resume.");
+        loadDashboard(); // show the real, saved state (not a stale snapshot)
         es.close();
       }
     };

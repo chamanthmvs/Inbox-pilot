@@ -137,6 +137,18 @@ class GmailClient:
                     f"retry {attempt + 1}/{max_retries} in {wait_time:.1f}s..."
                 )
                 time.sleep(wait_time)
+
+            except (TimeoutError, ConnectionError, OSError) as error:
+                # Socket read timeouts / dropped connections are transient too
+                # ("The read operation timed out"). Back off and retry.
+                if attempt == max_retries - 1:
+                    raise
+                wait_time = min(60.0, 2 ** attempt) + random.random()
+                print(
+                    f"Network error ({type(error).__name__}); "
+                    f"retry {attempt + 1}/{max_retries} in {wait_time:.1f}s..."
+                )
+                time.sleep(wait_time)
     
     def get_message(self, message_id):
 
@@ -231,6 +243,11 @@ class GmailClient:
                     batch.execute()
                 except HttpError as error:
                     if _transient(error.resp.status) and attempt < max_retries - 1:
+                        time.sleep(min(60.0, 2 ** attempt) + random.random())
+                        continue
+                    raise
+                except (TimeoutError, ConnectionError, OSError):
+                    if attempt < max_retries - 1:
                         time.sleep(min(60.0, 2 ** attempt) + random.random())
                         continue
                     raise

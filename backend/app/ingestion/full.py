@@ -72,7 +72,17 @@ def full_ingest_and_classify(
         ]
 
         if to_fetch:
-            raws = client.get_messages_metadata_batch(to_fetch)  # one HTTP call per ~50
+            try:
+                raws = client.get_messages_metadata_batch(to_fetch)  # one HTTP call per ~50
+            except Exception:
+                # A whole page failed even after retries — skip it; these ids
+                # aren't stored, so the next run picks them up. Don't die.
+                errors += len(to_fetch)
+                _emit(on_progress, phase="item", mode="full", done=classified,
+                      total=total, ingested=ingested, seen=seen, errors=errors)
+                if not page_token:
+                    break
+                continue
             batch = []
             for mid in to_fetch:
                 raw = raws.get(mid)

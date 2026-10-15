@@ -17,6 +17,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const esRef = useRef(null);
 
   const connected = !!(status && status.authenticated);
@@ -160,6 +161,13 @@ export default function App() {
   }
 
   async function applyApproved() {
+    const breakdown = approvedCount;
+    const ok = window.confirm(
+      dryRun
+        ? `Preview (DRY-RUN): simulate ${fmt(breakdown)} approved change(s)? Nothing in Gmail will change.`
+        : `Apply ${fmt(breakdown)} approved change(s) to Gmail now?\n\n• Labels file emails into folders\n• Archive removes them from the Inbox (still searchable)\n• Trash moves them to Gmail's bin (recoverable ~30 days)\n\nEverything is reversible and logged.`
+    );
+    if (!ok) return;
     setPhase("applying");
     setError(null);
     try {
@@ -193,21 +201,47 @@ export default function App() {
             <button
               className={`mode ${dryRun ? "dry" : "live"}`}
               onClick={toggleDryRun}
-              title="Toggle whether Apply changes Gmail for real"
+              title={dryRun ? "Preview mode — Apply only simulates. Click to go LIVE." : "Live mode — Apply makes real changes. Click to preview safely."}
             >
-              {dryRun ? "DRY-RUN (safe)" : "LIVE"}
+              {dryRun ? "👀 Preview mode" : "🟢 Live mode"}
             </button>
           )}
         </div>
       </header>
 
+      <div className="safety-strip">
+        🔒 Reads only metadata — never your email content · nothing is ever deleted · every change is reversible &amp; logged
+        <button className="linkbtn" onClick={() => setShowHelp((v) => !v)}>
+          {showHelp ? "Hide how it works" : "How it works"}
+        </button>
+      </div>
+
+      {showHelp && (
+        <div className="help card">
+          <ol className="help-steps">
+            <li><b>Connect</b> your Gmail — a one-time Google sign-in. The app can read &amp; label, but <b>cannot delete</b>.</li>
+            <li><b>Organize</b> — it reads just the envelope (sender, subject, date) of your emails and suggests a tidy category for each.</li>
+            <li><b>Review by sender</b> — emails are grouped (e.g. “1,842 from naukri.com → Job/Applications”). You <b>Approve</b>, <b>Archive</b>, or <b>Trash</b> a whole group in one click.</li>
+            <li><b>Apply</b> — only what you approved is changed in Gmail, and it’s all written to a log you can undo.</li>
+          </ol>
+          <p className="muted small">Actions: <b>Label</b> = file into a folder · <b>Archive</b> = remove from Inbox (kept &amp; searchable) · <b>Trash</b> = Gmail bin (recoverable ~30 days).</p>
+        </div>
+      )}
+
       {error && <div className="banner error">⚠ {error}</div>}
+
+      {dryRun && (
+        <div className="banner info">
+          👀 <b>Preview mode (DRY-RUN):</b> Apply will only simulate — nothing in Gmail changes.
+          Flip the top-right switch to <b>LIVE</b> when you’re ready to make real changes.
+        </div>
+      )}
 
       {applyResult && (
         <div className={`banner ${applyResult.applied > 0 ? "ok" : "info"}`}>
           {dryRun
-            ? `DRY-RUN: ${applyResult.dry_run} would be applied (nothing changed). Switch to LIVE to apply for real.`
-            : `Applied ${applyResult.applied} change(s) to Gmail · ${applyResult.errors} error(s).`}
+            ? `👀 Preview complete: ${fmt(applyResult.dry_run)} change(s) would be made. Nothing in Gmail changed — switch to Live mode to apply for real.`
+            : `✅ Done! Applied ${fmt(applyResult.applied)} change(s) to Gmail${applyResult.errors ? ` · ${fmt(applyResult.errors)} couldn’t be applied` : ""}.`}
         </div>
       )}
 
@@ -260,29 +294,23 @@ export default function App() {
         </section>
       )}
 
-      {/* Progress */}
+      {/* Progress — friendly, stage-aware */}
       {(phase === "running" || phase === "applying") && (
         <section className="card">
-          <h2>{phase === "running" ? "Working…" : "Applying to Gmail…"}</h2>
+          <div className="working">
+            <span className="spinner" aria-hidden="true" />
+            <h2 style={{ margin: 0 }}>{stageTitle(phase, progress)}</h2>
+          </div>
           <div className="bar"><div className="fill" style={{ width: `${pct}%` }} /></div>
-          <p className="progress-text">
-            {phase === "applying"
-              ? "Creating labels and applying approved emails…"
-              : !progress
-              ? "Starting…"
-              : progress.mode === "full"
-              ? `Classified ${progress.done}${progress.total ? ` / ${progress.total}` : ""}` +
-                (progress.ingested != null ? ` · fetched ${progress.ingested}` : "") +
-                (progress.errors ? ` · ${progress.errors} skipped` : "")
-              : `${progress.phase === "item" ? "Processing" : progress.phase} ${progress.done}/${progress.total}` +
-                (progress.subject ? ` — ${progress.subject}` : "") +
-                (progress.label ? ` → ${progress.label}` : "")}
-          </p>
-          {progress && progress.mode === "full" && (
+          <p className="progress-text">{stageText(phase, progress)}</p>
+          {phase === "running" && progress && progress.mode === "full" && (
             <p className="muted small">
-              This runs in the background and is resilient to Gmail rate limits — you can leave
-              this page and come back; it keeps going. Groups will be ready when it finishes.
+              🟢 This runs in the background and rides out Gmail’s rate limits — you can leave
+              this page and come back anytime; it keeps going and resumes where it left off.
             </p>
+          )}
+          {phase === "applying" && (
+            <p className="muted small">Talking to Gmail in bulk — this is quick even for thousands of emails.</p>
           )}
         </section>
       )}
@@ -293,10 +321,10 @@ export default function App() {
           {(counts.NEEDS_REVIEW || 0) > 0 && (
             <div className="banner info" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"14px",flexWrap:"wrap"}}>
               <span>
-                <b>{counts.NEEDS_REVIEW}</b> emails need review.
+                <b>{fmt(counts.NEEDS_REVIEW)}</b> emails the sorter wasn’t sure about.
                 {llmEnabled
-                  ? " Let the AI classifier label them — no re-fetch from Gmail needed."
-                  : " The AI classifier is OFF — add ANTHROPIC_API_KEY to backend/.env and restart to shrink this pile automatically."}
+                  ? " Let the AI label them for you — it won’t re-download anything from Gmail."
+                  : " The AI helper is off — add your Anthropic key to backend/.env and restart to clear most of these automatically."}
               </span>
               {llmEnabled && (
                 <button className="btn primary" disabled={busy || phase !== "idle"}
@@ -308,44 +336,45 @@ export default function App() {
           )}
 
           <section className="tiles">
-            <Tile label="Groups to review" value={groups.length} accent />
-            <Tile label="Pending emails" value={counts.PENDING || 0} />
-            <Tile label="Approved (ready)" value={approvedCount} good />
-            <Tile label="Needs review" value={counts.NEEDS_REVIEW || 0} warn />
+            <Tile label="Sender groups to review" value={fmt(groups.length)} accent />
+            <Tile label="Emails waiting" value={fmt(counts.PENDING || 0)} />
+            <Tile label="Approved — ready to apply" value={fmt(approvedCount)} good />
+            <Tile label="Need your input" value={fmt(counts.NEEDS_REVIEW || 0)} warn />
           </section>
 
           <CategoryBars groups={groups} />
 
           <section className="card">
             <div className="row between">
-              <h2>Review by sender · label</h2>
+              <h2>Review, grouped by sender</h2>
               <button
                 className="btn primary"
                 onClick={applyApproved}
                 disabled={approvedCount === 0 || busy}
-                title={approvedCount === 0 ? "Approve some groups first" : ""}
+                title={approvedCount === 0 ? "Approve a group or two first" : ""}
               >
-                ✓ Apply {approvedCount} approved{dryRun ? " (DRY-RUN)" : ""}
+                {dryRun ? "👀 Preview" : "✓ Apply"} {fmt(approvedCount)} approved
               </button>
             </div>
             <p className="muted small">
-              One click handles a whole sender+label group. Expand to see samples, or relabel a
-              group before approving. Approving teaches a rule so that sender is automatic next time.
+              Each card is a batch of emails from one sender. Pick what to do, then approve the
+              whole batch at once — <b>Label</b> (file it), <b>Archive</b> (out of Inbox), or
+              <b> Trash</b> (recoverable). Approving teaches the app so that sender is automatic next time.
             </p>
             {groups.length === 0 && (
               <div className="empty">
                 {approvedCount > 0 ? (
                   <>
-                    <p><b>Nothing left to review.</b> You have <b>{approvedCount}</b> approved email(s) ready.</p>
+                    <p>🎉 <b>All groups reviewed.</b> You have <b>{fmt(approvedCount)}</b> email(s) approved and ready.</p>
                     <p className="muted small">
-                      Click <b>“Apply {approvedCount} approved{dryRun ? " (DRY-RUN)" : ""}”</b> above
-                      {dryRun ? " — but DRY-RUN is on, so switch the top-right toggle to LIVE first." : " to label them in Gmail."}
+                      Hit the <b>{dryRun ? "👀 Preview" : "✓ Apply"} {fmt(approvedCount)} approved</b> button above
+                      {dryRun ? " — you’re in Preview mode, so switch to Live mode first to make it real." : " and they’ll be organized in Gmail."}
                     </p>
                   </>
                 ) : (counts.NEEDS_REVIEW || 0) > 0 ? (
-                  <p className="muted">Only “needs review” items remain — label them below.</p>
+                  <p className="muted">Just the “need your input” emails left — handle them in the section below.</p>
                 ) : (
-                  <p className="muted">✓ All caught up.</p>
+                  <p className="muted">🎉 All caught up — your inbox is organized!</p>
                 )}
               </div>
             )}
@@ -362,8 +391,8 @@ export default function App() {
 
           {needsReview.length > 0 && (
             <section className="card">
-              <h2>Needs review ({needsReview.length})</h2>
-              <p className="muted small">The classifier wasn't sure. Pick a label to include each.</p>
+              <h2>Need your input ({fmt(needsReview.length)})</h2>
+              <p className="muted small">The sorter wasn’t confident about these. Pick a category for any you care about — the rest can wait.</p>
               {needsReview.map((r) => (
                 <div className="review-row" key={r.message_id}>
                   <div className="grow">
@@ -461,6 +490,21 @@ function GroupCard({ group, taxonomy, busy, onDecide }) {
   const [action, setAction] = useState("label");
   const actionBtn =
     action === "trash" ? "🗑 Trash all" : action === "archive" ? "📥 Archive all" : "✓ Approve all";
+  const target = relabel || group.label;
+
+  function approve() {
+    if (action === "trash") {
+      if (!window.confirm(
+        `Move ${fmt(group.count)} email(s) from ${group.domain || "this sender"} to Gmail Trash?\n\nThey're recoverable in Gmail for ~30 days — nothing is permanently deleted.`
+      )) return;
+    } else if (action === "archive") {
+      if (!window.confirm(
+        `Archive ${fmt(group.count)} email(s) from ${group.domain || "this sender"}?\n\nThey leave your Inbox (labeled "${target}") but stay in Gmail and are searchable.`
+      )) return;
+    }
+    onDecide(group, "APPROVED", relabel || undefined, action);
+  }
+
   return (
     <div className="group">
       <div className="group-head">
@@ -469,16 +513,14 @@ function GroupCard({ group, taxonomy, busy, onDecide }) {
         </button>
         <div className="grow">
           <div className="group-title">
-            <span className="domain">{group.domain || "(no domain)"}</span>
+            <span className="count">{fmt(group.count)}</span>
+            <span className="muted">emails from</span>
+            <span className="domain">{group.domain || "(no sender domain)"}</span>
             <span className="arrow">→</span>
-            <span className="pill">{group.label}</span>
-            <span className="count">{group.count}</span>
+            <span className="pill">{relabel || group.label}</span>
           </div>
           <div className="muted small">
-            {(group.methods || []).join(", ")}
-            {group.confidence_max
-              ? ` · confidence ${group.confidence_min.toFixed(2)}–${group.confidence_max.toFixed(2)}`
-              : ""}
+            {confidenceLabel(group)} · suggested by {methodLabel(group.methods)}
           </div>
         </div>
         <div className="group-actions">
@@ -505,26 +547,70 @@ function GroupCard({ group, taxonomy, busy, onDecide }) {
             <option value="archive">Label + Archive</option>
             <option value="trash">Trash (recoverable)</option>
           </select>
-          <button className="btn good sm" disabled={busy}
-            onClick={() => onDecide(group, "APPROVED", relabel || undefined, action)}>
+          <button className="btn good sm" disabled={busy} onClick={approve}>
             {actionBtn}
           </button>
           <button className="btn ghost sm" disabled={busy}
-            onClick={() => onDecide(group, "REJECTED")}>
+            onClick={() => onDecide(group, "REJECTED")} title="Leave these as-is for now">
             ✕ Skip
           </button>
         </div>
       </div>
       {open && (
-        <ul className="samples">
-          {(group.samples || []).map((s, i) => (
-            <li key={i} className="ellipsis">{s.subject}</li>
-          ))}
-          {group.count > (group.samples || []).length && (
-            <li className="muted small">…and {group.count - group.samples.length} more</li>
-          )}
-        </ul>
+        <div className="samples-wrap">
+          <div className="muted small" style={{ marginBottom: "4px" }}>A few subjects from this batch:</div>
+          <ul className="samples">
+            {(group.samples || []).map((s, i) => (
+              <li key={i} className="ellipsis">{s.subject || "(no subject)"}</li>
+            ))}
+            {group.count > (group.samples || []).length && (
+              <li className="muted small">…and {fmt(group.count - group.samples.length)} more</li>
+            )}
+          </ul>
+        </div>
       )}
     </div>
   );
+}
+
+// --- friendly helpers --------------------------------------------------------
+
+function fmt(n) {
+  return (n ?? 0).toLocaleString();
+}
+
+function stageTitle(phase, progress) {
+  if (phase === "applying") return "Organizing your Gmail…";
+  if (progress && progress.mode === "full") return "Reading & sorting your inbox…";
+  return "Sorting your emails…";
+}
+
+function stageText(phase, progress) {
+  if (phase === "applying") return "Applying your approved changes in Gmail.";
+  if (!progress) return "Getting started…";
+  const done = fmt(progress.done || 0);
+  const total = progress.total ? ` of ${fmt(progress.total)}` : "";
+  if (progress.mode === "full") {
+    let t = `Sorted ${done}${total} emails`;
+    if (progress.ingested != null) t += ` · fetched ${fmt(progress.ingested)}`;
+    if (progress.errors) t += ` · ${fmt(progress.errors)} skipped`;
+    return t + " — you can keep working, this runs on its own.";
+  }
+  return `Sorted ${done}${total} emails…`;
+}
+
+function confidenceLabel(group) {
+  const c = group.confidence_max || 0;
+  if ((group.methods || []).includes("rules") || (group.methods || []).includes("learned") || c >= 0.85) return "High confidence";
+  if (c >= 0.6) return "Medium confidence";
+  return "Lower confidence — worth a peek";
+}
+
+function methodLabel(methods) {
+  const m = methods || [];
+  if (m.includes("learned")) return "a rule you taught it";
+  if (m.includes("rules")) return "a built-in rule";
+  if (m.includes("llm")) return "AI";
+  if (m.includes("human")) return "you";
+  return "the sorter";
 }

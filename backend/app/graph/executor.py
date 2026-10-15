@@ -56,49 +56,66 @@ class LabelExecutor:
         return self._label_ids[name]
 
     def apply_approved(self, on_progress=None) -> ApplyResult:
-        """Apply every APPROVED proposal that carries a label."""
-        result = ApplyResult()
-        approved = [
-            p for p in self.store.list_proposals("APPROVED") if p.get("label")
-        ]
-        total = len(approved)
-        _emit(on_progress, phase="start", done=0, total=total)
+        """
+        Apply every APPROVED proposal, bucketed by action for bulk efficiency:
 
-        for i, proposal in enumerate(approved, start=1):
-            message_id = proposal["message_id"]
-            label = proposal["label"]
+          * label   — add the category label
+          * archive — add the label (if any) AND remove INBOX (out of inbox)
+          * trash   — add TRASH (move to Trash; recoverable ~30 days)
+
+        All are reversible; nothing is permanently deleted. Uses batchModify
+        (up to 1000 messages per call).
+        """
+        from collections import defaultdict
+
+        result = ApplyResult()
+        approved = self.store.list_proposals("APPROVED")
+
+        # Bucket by (action, label) so identical changes go in one batch.
+        buckets: dict = defaultdict(list)
+        for p in approved:
+            action = (p.get("action") or "label").lower()
+            label = p.get("label")
+            if action == "label" and not label:
+                continue  # nothing to do without a label
+            buckets[(action, label)].append(p["message_id"])
+
+        total = sum(len(v) for v in buckets.values())
+        _emit(on_progress, phase="start", done=0, total=total)
+        done = 0
+
+        for (action, label), ids in buckets.items():
             try:
                 if self.dry_run:
-                    self.store.add_audit(
-                        message_id, label, "apply_label", "dry_run",
-                        f"would add label '{label}'",
+                    # Touch NOTHING in Gmail — don't even resolve/create labels.
+                    self.store.add_audit_many(
+                        [(mid, label, action, "dry_run", f"would {action}") for mid in ids]
                     )
-                    result.dry_run += 1
+                    result.dry_run += len(ids)
                 else:
-                    label_id = self._label_id(label)
-                    self.client.modify_message_labels(
-                        message_id, add_label_ids=[label_id]
+                    add_ids, remove_ids = [], []
+                    if action in ("label", "archive") and label:
+                        add_ids.append(self._label_id(label))
+                    if action == "archive":
+                        remove_ids.append("INBOX")
+                    if action == "trash":
+                        add_ids.append("TRASH")
+                    self.client.batch_modify_labels(ids, add_label_ids=add_ids, remove_label_ids=remove_ids)
+                    self.store.update_proposals_status(ids, "APPLIED")
+                    self.store.add_audit_many(
+                        [(mid, label, action, "applied",
+                          f"{action}: +{add_ids} -{remove_ids}") for mid in ids]
                     )
-                    self.store.mark_applied(message_id)
-                    self.store.add_audit(
-                        message_id, label, "apply_label", "applied",
-                        f"added '{label}' ({label_id})",
-                    )
-                    result.applied += 1
-            except Exception as error:  # never let one bad message stop the batch
-                self.store.add_audit(
-                    message_id, label, "apply_label", "error", str(error)
+                    result.applied += len(ids)
+            except Exception as error:  # a bad bucket never stops the rest
+                self.store.add_audit_many(
+                    [(mid, label, action, "error", str(error)) for mid in ids]
                 )
-                result.errors += 1
+                result.errors += len(ids)
 
-            _emit(
-                on_progress,
-                phase="item",
-                done=i,
-                total=total,
-                label=label,
-                dry_run=self.dry_run,
-            )
+            done += len(ids)
+            _emit(on_progress, phase="item", done=done, total=total,
+                  label=label, action=action, dry_run=self.dry_run)
 
         if self.dry_run and total:
             result.notes.append("dry-run: nothing was changed in Gmail")

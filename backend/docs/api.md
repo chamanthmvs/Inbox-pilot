@@ -77,7 +77,7 @@ without changing Gmail, `USE_LLM=0` for rules-only, `CLASSIFIER_MODEL=claude-hai
 | POST | `/api/runs/{id}/decisions` | Body `{"decisions": {"<msg_id>": "APPROVED"\|"REJECTED"}}`. Resumes → applies. |
 | GET | `/api/proposals?status=` | Proposals joined with message subject/sender/snippet. |
 | GET | `/api/groups?status=` | Proposals grouped by **(sender domain × label)** with counts + samples — the bulk-review unit for large inboxes. |
-| POST | `/api/groups/decide` | Bulk approve/reject a group. Body `{"domain","label","verdict","new_label"?}`; `new_label` relabels before approving. Approving remembers a learned rule. |
+| POST | `/api/groups/decide` | Bulk approve/reject a group. Body `{"domain","label","verdict","new_label"?,"action"?}`; `new_label` relabels; `action` ∈ `label`/`archive`/`trash` sets what Apply does. Approving remembers a learned rule. |
 | GET | `/api/learned` | The learned sender→label rules. |
 | GET | `/api/proposals/counts` | `{status: count}`. |
 | POST | `/api/proposals/{id}/label` | Human-set a label (e.g. for `NEEDS_REVIEW`). Body `{"label": "..."}`. |

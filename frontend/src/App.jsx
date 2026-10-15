@@ -132,11 +132,11 @@ export default function App() {
     launch(fetchAll ? api.startFull() : api.startRun(maxMessages));
   }
 
-  async function decideGroup(group, verdict, newLabel) {
+  async function decideGroup(group, verdict, newLabel, action) {
     setBusy(true);
     setError(null);
     try {
-      await api.decideGroup(group.domain, group.label, verdict, newLabel);
+      await api.decideGroup(group.domain, group.label, verdict, newLabel, action);
       await loadDashboard();
     } catch (e) {
       setError(e.message);
@@ -207,7 +207,7 @@ export default function App() {
         <div className={`banner ${applyResult.applied > 0 ? "ok" : "info"}`}>
           {dryRun
             ? `DRY-RUN: ${applyResult.dry_run} would be applied (nothing changed). Switch to LIVE to apply for real.`
-            : `Applied ${applyResult.applied} label(s) to Gmail · ${applyResult.errors} error(s).`}
+            : `Applied ${applyResult.applied} change(s) to Gmail · ${applyResult.errors} error(s).`}
         </div>
       )}
 
@@ -458,6 +458,9 @@ function CategoryBars({ groups }) {
 function GroupCard({ group, taxonomy, busy, onDecide }) {
   const [open, setOpen] = useState(false);
   const [relabel, setRelabel] = useState("");
+  const [action, setAction] = useState("label");
+  const actionBtn =
+    action === "trash" ? "🗑 Trash all" : action === "archive" ? "📥 Archive all" : "✓ Approve all";
   return (
     <div className="group">
       <div className="group-head">
@@ -491,9 +494,20 @@ function GroupCard({ group, taxonomy, busy, onDecide }) {
               <option key={l.name} value={l.name}>{l.name}</option>
             ))}
           </select>
+          <select
+            className="select sm"
+            value={action}
+            disabled={busy}
+            onChange={(e) => setAction(e.target.value)}
+            title="What Apply will do for this group"
+          >
+            <option value="label">Label only</option>
+            <option value="archive">Label + Archive</option>
+            <option value="trash">Trash (recoverable)</option>
+          </select>
           <button className="btn good sm" disabled={busy}
-            onClick={() => onDecide(group, "APPROVED", relabel || undefined)}>
-            ✓ Approve all
+            onClick={() => onDecide(group, "APPROVED", relabel || undefined, action)}>
+            {actionBtn}
           </button>
           <button className="btn ghost sm" disabled={busy}
             onClick={() => onDecide(group, "REJECTED")}>

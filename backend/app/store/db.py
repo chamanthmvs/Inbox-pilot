@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS proposals (
     confidence  REAL,
     reason      TEXT,
     status      TEXT,
+    action      TEXT DEFAULT 'label',  -- label | archive | trash (what Apply does)
     created_at  TEXT,
     decided_at  TEXT
 );
@@ -109,7 +110,16 @@ class Store:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Lightweight, additive migrations for stores created before new columns."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(proposals)")}
+        if "action" not in cols:
+            self.conn.execute(
+                "ALTER TABLE proposals ADD COLUMN action TEXT DEFAULT 'label'"
+            )
 
     # ---------------------------------------------------------------- messages
 
@@ -336,6 +346,18 @@ class Store:
         )
         self.conn.commit()
 
+    def add_audit_many(self, rows: list) -> None:
+        """Bulk audit insert. Each row: (message_id, label, action, outcome, detail)."""
+        if not rows:
+            return
+        now = _now_iso()
+        self.conn.executemany(
+            "INSERT INTO audit_log (message_id, label, action, outcome, detail, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [(mid, label, action, outcome, detail, now) for (mid, label, action, outcome, detail) in rows],
+        )
+        self.conn.commit()
+
     def list_audit(self, limit: int = 100) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
@@ -434,6 +456,17 @@ class Store:
         self.conn.executemany(
             "UPDATE proposals SET label = ?, method = 'human' WHERE message_id = ?",
             [(new_label, mid) for mid in message_ids],
+        )
+        self.conn.commit()
+        return len(message_ids)
+
+    def set_proposals_action(self, message_ids: list, action: str) -> int:
+        """Set what Apply will do for these proposals: label | archive | trash."""
+        if not message_ids:
+            return 0
+        self.conn.executemany(
+            "UPDATE proposals SET action = ? WHERE message_id = ?",
+            [(action, mid) for mid in message_ids],
         )
         self.conn.commit()
         return len(message_ids)

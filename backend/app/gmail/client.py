@@ -287,6 +287,32 @@ class GmailClient:
 
         return self._execute_with_retry(request)
 
+    def batch_modify_labels(self, message_ids, add_label_ids=None, remove_label_ids=None, chunk=1000):
+        """
+        Apply the SAME label change to many messages via users.messages.batchModify
+        (up to 1000 ids per call). Used for bulk apply/archive/trash at scale.
+        Archive = remove 'INBOX'; Trash = add 'TRASH' (both reversible).
+        """
+        ids = list(message_ids)
+        add = add_label_ids or []
+        remove = remove_label_ids or []
+        for start in range(0, len(ids), chunk):
+            batch_ids = ids[start : start + chunk]
+            request = (
+                self.service
+                .users()
+                .messages()
+                .batchModify(
+                    userId="me",
+                    body={
+                        "ids": batch_ids,
+                        "addLabelIds": add,
+                        "removeLabelIds": remove,
+                    },
+                )
+            )
+            self._execute_with_retry(request)
+
     def list_labels(self):
         """Return all labels on the account (system + user-created)."""
 

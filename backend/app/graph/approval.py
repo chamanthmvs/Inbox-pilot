@@ -42,7 +42,7 @@ class ApprovalService:
         )
         self.store.approve_proposal(message_id)
 
-    def decide_group(self, domain: str, label: str, verdict: str, new_label: str = None) -> dict:
+    def decide_group(self, domain: str, label: str, verdict: str, new_label: str = None, action: str = "label") -> dict:
         """
         Bulk approve/reject a whole (domain, label) group of PENDING proposals.
         Optionally RELABEL the group first (new_label) — e.g. the classifier put a
@@ -70,8 +70,14 @@ class ApprovalService:
             if new_label and new_label != label:
                 self.store.relabel_proposals(ids, new_label)
                 final_label = new_label
+            action = (action or "label").lower()
+            if action not in ("label", "archive", "trash"):
+                action = "label"
+            self.store.set_proposals_action(ids, action)
             self.store.update_proposals_status(ids, "APPROVED")
             self.store.add_learned_rule(domain, final_label)
+            return {"updated": len(ids), "verdict": verdict, "domain": domain,
+                    "label": final_label, "action": action}
         elif verdict == "REJECTED":
             self.store.update_proposals_status(ids, "REJECTED")
         else:

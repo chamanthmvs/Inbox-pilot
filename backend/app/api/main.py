@@ -55,6 +55,7 @@ class GroupDecisionBody(BaseModel):
     label: str
     verdict: str  # "APPROVED" | "REJECTED"
     new_label: str | None = None  # optional relabel before approving
+    action: str = "label"  # label | archive | trash
 
 
 def get_manager(request: Request) -> RunManager:
@@ -186,7 +187,7 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
         if body.new_label and not mgr.taxonomy.is_valid(body.new_label):
             raise HTTPException(status_code=400, detail=f"unknown label: {body.new_label}")
         return ApprovalService(mgr.store).decide_group(
-            body.domain, body.label, body.verdict, new_label=body.new_label
+            body.domain, body.label, body.verdict, new_label=body.new_label, action=body.action
         )
 
     @app.get("/api/learned")

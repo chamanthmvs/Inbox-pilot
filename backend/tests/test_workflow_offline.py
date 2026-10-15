@@ -83,6 +83,10 @@ class FakeGmail:
         self.modify_calls.append((message_id, tuple(add_label_ids or [])))
         return {"id": message_id, "labelIds": list(add_label_ids or [])}
 
+    def batch_modify_labels(self, message_ids, add_label_ids=None, remove_label_ids=None, chunk=1000):
+        for mid in message_ids:
+            self.modify_calls.append((mid, tuple(add_label_ids or []), tuple(remove_label_ids or [])))
+
 
 # --- executor tests ----------------------------------------------------------
 
@@ -130,6 +134,35 @@ def test_executor_dry_run():
 
 # --- full workflow test ------------------------------------------------------
 
+def test_executor_actions():
+    print("LabelExecutor (label / archive / trash actions):")
+    with tempfile.TemporaryDirectory() as d:
+        store = Store(os.path.join(d, "t.db"))
+        client = FakeGmail({})
+        for mid, label, action in [("a1", "Personal", "label"),
+                                    ("a2", "Promotions", "archive"),
+                                    ("a3", "Promotions", "trash")]:
+            store.upsert_message(meta(mid))
+            store.upsert_proposal(mid, label, "rules", 1.0, "r", "PENDING")
+            store.set_proposals_action([mid], action)
+            store.set_proposal_status(mid, "APPROVED")
+
+        res = LabelExecutor(client, store).apply_approved()
+        check("applied 3", res.applied == 3 and res.errors == 0)
+
+        calls = {c[0]: c for c in client.modify_calls}
+        check("label: a1 adds a label, removes nothing",
+              calls["a1"][1] and calls["a1"][2] == ())
+        check("archive: a2 removes INBOX", "INBOX" in calls["a2"][2])
+        check("trash: a3 adds TRASH", "TRASH" in calls["a3"][1])
+
+        actions = {r["action"] for r in store.list_audit()}
+        check("audit records all three actions", actions == {"label", "archive", "trash"})
+        check("all three APPLIED",
+              all(store.get_proposal(m)["status"] == "APPLIED" for m in ["a1", "a2", "a3"]))
+        store.close()
+
+
 def test_workflow_interrupt_resume():
     print("Workflow (ingest → classify → interrupt → resume → apply):")
     with tempfile.TemporaryDirectory() as d:
@@ -165,6 +198,7 @@ def test_workflow_interrupt_resume():
         check("m3 still NEEDS_REVIEW", store.get_proposal("m3")["status"] == "NEEDS_REVIEW")
         check("only m1 was labelled in Gmail",
               len(client.modify_calls) == 1 and client.modify_calls[0][0] == "m1")
+        # (archive/trash actions are covered in the classifier/executor tests)
         check("audit recorded the apply", store.audit_count() == 1)
         store.close()
 
@@ -172,5 +206,6 @@ def test_workflow_interrupt_resume():
 if __name__ == "__main__":
     test_executor_real()
     test_executor_dry_run()
+    test_executor_actions()
     test_workflow_interrupt_resume()
     print("\nAll Stage-3 offline tests passed.")

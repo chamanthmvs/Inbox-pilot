@@ -51,11 +51,11 @@ export const api = {
   groups: (status = "PENDING") =>
     fetch(`${BASE}/groups?status=${encodeURIComponent(status)}`).then(json).then((d) => d.groups),
 
-  decideGroup: (domain, label, verdict, newLabel) =>
+  decideGroup: (domain, label, verdict, newLabel, action) =>
     fetch(`${BASE}/groups/decide`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ domain, label, verdict, new_label: newLabel || null }),
+      body: JSON.stringify({ domain, label, verdict, new_label: newLabel || null, action: action || "label" }),
     }).then(json),
 
   setLabel: (messageId, label) =>

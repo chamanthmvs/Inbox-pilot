@@ -84,52 +84,68 @@ class LLMClassifier:
 
     # -- batch (used by the runner — the cheap path) --------------------------
 
-    def classify_batch(self, metas) -> dict:
-        """Return {message_id: LLMMatch | None} for the given messages."""
+    def classify_batch(self, metas, hints=None) -> dict:
+        """
+        Return {message_id: LLMMatch | None}. If `hints` ({id: suggested_label})
+        is given, each email carries a rule's suggestion for the model to CONFIRM
+        or CORRECT (never blindly accept) — this is how rules get AI-vetted.
+        """
         out = {m.id: None for m in metas}
         client = self._client_or_none()
         if client is None or not metas:
             return out
 
+        hints = hints or {}
         for i in range(0, len(metas), self.chunk_size):
             chunk = metas[i : i + self.chunk_size]
-            out.update(self._classify_chunk(client, chunk))
+            out.update(self._classify_chunk(client, chunk, hints))
         return out
 
-    def _classify_chunk(self, client, chunk) -> dict:
+    def _classify_chunk(self, client, chunk, hints=None) -> dict:
+        hints = hints or {}
         out = {m.id: None for m in chunk}
 
         system = (
-            "You label emails for an inbox-organizing tool. For EACH email choose "
-            "the single best label from the fixed MENU below.\n\n"
-            "Guidelines:\n"
-            "- Prefer the MOST SPECIFIC label that clearly fits (a sub-label over "
-            "its parent). If only the broad category fits, use the category.\n"
-            "- A genuine one-to-one message from a real PERSON (a human sender, not "
-            "a no-reply / marketing / notification address) is 'Personal' — even "
-            "from a work domain (e.g. a colleague at a company).\n"
-            "- Automated mail (no-reply, alerts, receipts, notifications) belongs to "
-            "the topic it is about (bank alert, order, statement, etc.), NOT Personal.\n"
-            "- The sender's domain is a strong hint; use the subject to disambiguate.\n"
-            "- If you are not reasonably sure, answer \"UNKNOWN\" rather than guessing.\n\n"
-            "Examples:\n"
-            '  from="Ravi Kumar <ravi@gmail.com>" subject="catching up this weekend?" -> Personal\n'
-            '  from="Swapnil <swapnil@cognizant.com>" subject="lunch tomorrow?" -> Personal\n'
-            '  from="HDFC Bank <alerts@hdfcbank.net>" subject="Debit alert on your card" -> Bank/Alerts & Notifications\n'
-            '  from="Flipkart <noreply@flipkart.com>" subject="Your order has shipped" -> Shopping/Orders & Delivery\n'
-            '  from="Zerodha <noreply@zerodha.net>" subject="Redemption report" -> Finance/Investments & Insurance\n'
-            '  from="Myntra <offers@myntra.com>" subject="Flat 60% off this weekend" -> Promotions\n\n'
-            f"MENU (use exactly one name from this list, or UNKNOWN):\n{self._menu_text()}"
+            "You are an email-sorting assistant. For EACH email, choose the single "
+            "best label from the fixed MENU, using ONLY the fields given (From, "
+            "Subject, Preview).\n\n"
+            "STRICT RULES — follow exactly:\n"
+            "1. Decide ONLY from the provided fields. Do NOT invent, guess, or assume "
+            "anything about the email's contents you cannot see. No outside knowledge "
+            "about specific companies beyond what the sender/subject plainly show.\n"
+            "2. You MUST output a label copied EXACTLY from the MENU, or the literal "
+            "word UNKNOWN. Never invent a new label or alter the wording.\n"
+            "3. If the fields do not clearly support a label, output UNKNOWN. It is "
+            "better to say UNKNOWN than to guess. Do not force a fit.\n"
+            "4. Some emails include a RULE SUGGESTION. Treat it ONLY as a hint: CONFIRM "
+            "it if the From/Subject clearly support it; CORRECT it to a better MENU "
+            "label if one plainly fits; otherwise output UNKNOWN. Never accept a "
+            "suggestion you cannot justify from the fields.\n"
+            "5. A genuine one-to-one message from a real person (not a no-reply / "
+            "marketing / notification address) is 'Personal', even from a work domain. "
+            "Automated mail (no-reply, alerts, receipts) belongs to its topic, not Personal.\n"
+            "6. Prefer the most specific label that clearly fits; otherwise its parent.\n"
+            "7. `confidence` (0..1) must reflect ONLY how clearly the fields support the "
+            "label — do not be overconfident. `reason` must cite the concrete signal "
+            "(e.g. the sender domain or an exact word in the subject), not speculation.\n\n"
+            f"MENU (copy one name exactly, or UNKNOWN):\n{self._menu_text()}"
         )
-        lines = [
-            f'[{idx}] from="{m.from_addr}" subject="{m.subject}" '
-            f'preview="{(m.snippet or "")[:160]}"'
-            for idx, m in enumerate(chunk)
-        ]
+
+        def line(idx, m):
+            hint = hints.get(m.id)
+            hint_txt = f' rule_suggestion="{hint}"' if hint else ""
+            return (
+                f'[{idx}] from="{m.from_addr}" subject="{m.subject}" '
+                f'preview="{(m.snippet or "")[:160]}"{hint_txt}'
+            )
+
+        lines = [line(idx, m) for idx, m in enumerate(chunk)]
         user = (
-            "Classify each email below. Respond with ONLY a JSON array, one object "
-            'per email: [{"index": <n>, "label": "<name or UNKNOWN>", '
-            '"confidence": <0..1>, "reason": "<short>"}].\n\n' + "\n".join(lines)
+            "Classify each email below. Respond with ONLY a JSON array — no prose, no "
+            "markdown — one object per email: "
+            '[{"index": <n>, "label": "<exact MENU name or UNKNOWN>", '
+            '"confidence": <0..1>, "reason": "<cite the exact signal>"}].\n\n'
+            + "\n".join(lines)
         )
 
         try:

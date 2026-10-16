@@ -35,6 +35,7 @@ def full_ingest_and_classify(
     batch_size: int = 40,
     skip_existing: bool = True,
     page_pause: float = 2.0,
+    verify_rules: bool = False,
 ):
     # page_pause throttles throughput to stay under Gmail's per-user per-minute
     # quota (~15k units/min; each metadata fetch is ~5 units). ~2s per 100-message
@@ -56,7 +57,7 @@ def full_ingest_and_classify(
     def flush(batch):
         nonlocal classified
         if batch:
-            classify_messages(store, classifier, batch)
+            classify_messages(store, classifier, batch, verify_rules=verify_rules)
             classified += len(batch)
             _emit(on_progress, phase="item", mode="full", done=classified,
                   total=total, ingested=ingested, seen=seen, errors=errors)

@@ -24,6 +24,7 @@ export default function App() {
   const connected = !!(status && status.authenticated);
   const dryRun = !!(status && status.dry_run);
   const llmEnabled = !!(status && status.llm_enabled);
+  const verifyRules = !!(status && status.verify_rules);
   const approvedCount = counts.APPROVED || 0;
   const hasWork = groups.length > 0 || needsReview.length > 0 || approvedCount > 0;
   const idle = phase === "idle";
@@ -112,6 +113,16 @@ export default function App() {
     if (!status) return;
     try {
       await api.setDryRun(!status.dry_run);
+      await refreshStatus();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function toggleVerify() {
+    if (!status) return;
+    try {
+      await api.setVerify(!status.verify_rules);
       await refreshStatus();
     } catch (e) {
       setError(e.message);
@@ -233,6 +244,17 @@ export default function App() {
               {dryRun ? "👀 Preview mode" : "🟢 Live mode"}
             </button>
           )}
+          {status && (
+            <button
+              className={`mode ${verifyRules ? "live" : "dry"}`}
+              onClick={toggleVerify}
+              title={verifyRules
+                ? "AI-vet is ON — the AI confirms or corrects every rule; nothing is labeled on a rule alone. Click to turn off (faster, rules-only)."
+                : "AI-vet is OFF — fast rules-first. Click to have the AI check every rule (more accurate)."}
+            >
+              {verifyRules ? "🧠 AI-vet: on" : "⚡ AI-vet: off"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -252,6 +274,7 @@ export default function App() {
             <li><b>Apply</b> — only what you approved is changed in Gmail, and it’s all written to a log you can undo.</li>
           </ol>
           <p className="muted small">Actions: <b>Label</b> = file into a folder · <b>Archive</b> = remove from Inbox (kept &amp; searchable) · <b>Trash</b> = Gmail bin (recoverable ~30 days).</p>
+          <p className="muted small">🧠 <b>AI-vet</b> (top-right): when on, the AI confirms or corrects every rule and only labels what it can justify — no rule decides on its own. Turn off for a faster rules-only pass.</p>
         </div>
       )}
 

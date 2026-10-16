@@ -99,6 +99,7 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
             "authenticated": mgr.is_authenticated(),
             "dry_run": mgr.settings.dry_run,
             "llm_enabled": mgr.llm_available(),
+            "verify_rules": mgr.settings.verify_rules,
             "proposal_counts": mgr.store.proposal_counts(),
             "audit_count": mgr.store.audit_count(),
             "run": mgr.current.snapshot() if mgr.current else None,
@@ -122,6 +123,10 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
     @app.post("/api/settings/dry_run")
     def set_dry_run(body: DryRunBody, mgr: RunManager = Depends(get_manager)):
         return mgr.set_dry_run(body.enabled)
+
+    @app.post("/api/settings/verify_rules")
+    def set_verify(body: DryRunBody, mgr: RunManager = Depends(get_manager)):
+        return mgr.set_verify_rules(body.enabled)
 
     @app.get("/api/taxonomy")
     def taxonomy(mgr: RunManager = Depends(get_manager)):

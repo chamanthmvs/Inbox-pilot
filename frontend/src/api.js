@@ -83,6 +83,13 @@ export const api = {
 
   undo: () => fetch(`${BASE}/undo`, { method: "POST" }).then(json),
 
+  setVerify: (enabled) =>
+    fetch(`${BASE}/settings/verify_rules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }).then(json),
+
   audit: (limit = 50) => fetch(`${BASE}/audit?limit=${limit}`).then(json).then((d) => d.audit),
 
   streamUrl: (runId) => `${BASE}/runs/${encodeURIComponent(runId)}/stream`,

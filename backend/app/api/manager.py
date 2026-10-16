@@ -115,7 +115,8 @@ class RunManager:
                     run.events.put({"type": "progress", **event})
 
                 result = classify_store(
-                    self.store, classifier, reclassify=reclassify, on_progress=sink
+                    self.store, classifier, reclassify=reclassify, on_progress=sink,
+                    verify_rules=self.settings.verify_rules,
                 )
                 run.summary = {
                     "processed": result.processed,
@@ -193,6 +194,11 @@ class RunManager:
             self._services.executor.dry_run = self.settings.dry_run
         return {"dry_run": self.settings.dry_run}
 
+    def set_verify_rules(self, enabled: bool) -> dict:
+        """Flip whether the AI vets rule matches (no rules-alone)."""
+        self.settings.verify_rules = bool(enabled)
+        return {"verify_rules": self.settings.verify_rules}
+
     def connect(self) -> dict:
         """
         Authenticate with Gmail now (builds the graph → runs OAuth if needed),
@@ -264,7 +270,8 @@ class RunManager:
                     run.events.put({"type": "progress", **event})
 
                 summary = full_ingest_and_classify(
-                    services.client, services.store, services.classifier, on_progress=sink
+                    services.client, services.store, services.classifier, on_progress=sink,
+                    verify_rules=self.settings.verify_rules,
                 )
                 run.summary = summary
                 run.status = "done"

@@ -20,6 +20,7 @@ class Settings:
     taxonomy_path: str = "config/taxonomy.yaml"
     classifier_model: str | None = None   # None → LLMClassifier's own default
     use_llm: bool = True                  # self-disables anyway without a key
+    verify_rules: bool = True             # AI vets rule matches (no rules-alone)
     dry_run: bool = False                 # True → plan label changes, don't apply
     thread_id: str = "default"            # LangGraph checkpoint thread
 
@@ -30,6 +31,7 @@ class Settings:
             taxonomy_path=os.environ.get("TAXONOMY_PATH", "config/taxonomy.yaml"),
             classifier_model=os.environ.get("CLASSIFIER_MODEL") or None,
             use_llm=_as_bool(os.environ.get("USE_LLM"), True),
+            verify_rules=_as_bool(os.environ.get("VERIFY_RULES"), True),
             dry_run=_as_bool(os.environ.get("DRY_RUN"), False),
             thread_id=os.environ.get("WORKFLOW_THREAD_ID", "default"),
         )

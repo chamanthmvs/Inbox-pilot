@@ -57,7 +57,7 @@ class FakeBatchLLM:
     enabled = True
     model = "fake"
 
-    def classify_batch(self, metas):
+    def classify_batch(self, metas, hints=None):
         out = {}
         for m in metas:
             if "mystery" in (m.subject or "").lower():
@@ -195,6 +195,39 @@ def test_llm_batch_path():
               store.get_proposal("a2")["method"] == "llm" and store.get_proposal("a2")["label"] == "Personal")
         check("a3 → NEEDS_REVIEW", store.get_proposal("a3")["status"] == "NEEDS_REVIEW")
         check("method mix", res.by_method.get("rules") == 1 and res.by_method.get("llm") == 1 and res.by_method.get("needs_review") == 1)
+        store.close()
+
+
+def test_ai_vetted_rules():
+    print("AI-vetted rules (rules become hints; AI decides):")
+    tax = Taxonomy.load(TAX_PATH)
+
+    class VetLLM:
+        enabled = True
+        model = "fake"
+        seen_hints = {}
+        def classify_batch(self, metas, hints=None):
+            VetLLM.seen_hints.update(hints or {})
+            out = {}
+            for m in metas:
+                # The AI CORRECTS a wrong rule hint, and abstains on "weird".
+                if "weird" in (m.subject or "").lower():
+                    out[m.id] = None
+                else:
+                    out[m.id] = LLMMatch("Personal", 0.92, "llm: looks personal")
+            return out
+
+    classifier = Classifier(tax, RulesClassifier(tax), VetLLM())
+    with tempfile.TemporaryDirectory() as d:
+        store = Store(os.path.join(d, "t.db"))
+        # a1 would match a rule (naukri→Job/Applications); AI overrides to Personal
+        store.upsert_message(msg("a1", frm="x@naukri.com", subject="jobs for you"))
+        store.upsert_message(msg("a2", frm="y@x.com", subject="weird thing"))
+        classify_store(store, classifier, verify_rules=True)
+        p1 = store.get_proposal("a1")
+        check("rule was passed to AI as a hint", VetLLM.seen_hints.get("a1") == "Job/Applications & Alerts")
+        check("AI decision wins (method ai-vetted)", p1["method"] == "ai-vetted" and p1["label"] == "Personal")
+        check("no confident AI → NEEDS_REVIEW", store.get_proposal("a2")["status"] == "NEEDS_REVIEW")
         store.close()
 
 
@@ -367,6 +400,7 @@ if __name__ == "__main__":
     test_real_world_examples()
     test_orchestrator_states()
     test_llm_batch_path()
+    test_ai_vetted_rules()
     test_learned_rules()
     test_group_decide()
     test_full_ingest()

@@ -69,9 +69,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     message_id  TEXT,
     label       TEXT,
-    action      TEXT,            -- e.g. apply_label
-    outcome     TEXT,            -- applied | dry_run | error | skipped
+    action      TEXT,            -- label | archive | trash | undo
+    outcome     TEXT,            -- applied | dry_run | error | skipped | undone
     detail      TEXT,
+    batch_id    TEXT,            -- groups one apply/undo run (for Undo last run)
     created_at  TEXT
 );
 
@@ -91,6 +92,38 @@ def _domain_of(sender: str) -> str:
     import re
     match = re.search(r"[\w.\-+]+@([\w.\-]+)", sender or "")
     return match.group(1).lower() if match else ""
+
+
+_KW_STOP = {
+    "the", "your", "you", "for", "and", "with", "from", "this", "that", "has",
+    "have", "are", "was", "will", "new", "now", "get", "our", "all", "out",
+    "inc", "ltd", "pvt", "re", "fwd", "hi", "dear", "mr", "ms", "update",
+    "updates", "notification", "email", "mail", "please", "important",
+}
+# Multi-word phrases worth surfacing as their own cluster.
+_KW_BIGRAMS = (
+    "debit alert", "credit card", "credit alert", "e-mandate", "low balance",
+    "account statement", "bank statement", "mini statement", "payment due",
+    "amount due", "out for delivery", "order confirmed", "tax invoice",
+    "interview", "offer letter", "payslip", "salary slip", "otp", "verification code",
+)
+
+
+def _subject_keywords(subjects, top: int = 30):
+    """Frequent informative words/phrases across subjects → [(keyword, count)] desc."""
+    import re
+    from collections import Counter
+
+    counter = Counter()
+    for s in subjects:
+        sl = (s or "").lower()
+        for bg in _KW_BIGRAMS:
+            if bg in sl:
+                counter[bg] += 1
+        for w in re.findall(r"[a-z][a-z\-]{2,}", sl):
+            if w not in _KW_STOP:
+                counter[w] += 1
+    return counter.most_common(top)
 
 # A human decision we must not silently overwrite when re-classifying.
 DECIDED_STATUSES = ("APPROVED", "REJECTED", "APPLIED")
@@ -120,6 +153,9 @@ class Store:
             self.conn.execute(
                 "ALTER TABLE proposals ADD COLUMN action TEXT DEFAULT 'label'"
             )
+        acols = {r["name"] for r in self.conn.execute("PRAGMA table_info(audit_log)")}
+        if "batch_id" not in acols:
+            self.conn.execute("ALTER TABLE audit_log ADD COLUMN batch_id TEXT")
 
     # ---------------------------------------------------------------- messages
 
@@ -346,17 +382,33 @@ class Store:
         )
         self.conn.commit()
 
-    def add_audit_many(self, rows: list) -> None:
+    def add_audit_many(self, rows: list, batch_id: str = None) -> None:
         """Bulk audit insert. Each row: (message_id, label, action, outcome, detail)."""
         if not rows:
             return
         now = _now_iso()
         self.conn.executemany(
-            "INSERT INTO audit_log (message_id, label, action, outcome, detail, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            [(mid, label, action, outcome, detail, now) for (mid, label, action, outcome, detail) in rows],
+            "INSERT INTO audit_log (message_id, label, action, outcome, detail, batch_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(mid, label, action, outcome, detail, batch_id, now)
+             for (mid, label, action, outcome, detail) in rows],
         )
         self.conn.commit()
+
+    def last_applied_batch(self) -> Optional[str]:
+        """The most recent apply batch_id (for Undo). None if nothing to undo."""
+        row = self.conn.execute(
+            "SELECT batch_id FROM audit_log WHERE outcome = 'applied' AND batch_id IS NOT NULL "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return row["batch_id"] if row else None
+
+    def audit_for_batch(self, batch_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM audit_log WHERE batch_id = ? AND outcome = 'applied'",
+            (batch_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def list_audit(self, limit: int = 100) -> list[dict]:
         rows = self.conn.execute(
@@ -438,6 +490,35 @@ class Store:
         # Biggest groups first — the highest-leverage decisions.
         result.sort(key=lambda g: g["count"], reverse=True)
         return result
+
+    def drilldown(self, label: str, status: str = "PENDING", top: int = 14) -> dict:
+        """Break ONE label's slice down by sub-sender and subject-keyword clusters."""
+        from collections import Counter
+
+        rows = [r for r in self.list_proposals_detailed(status) if r.get("label") == label]
+        senders = Counter(_domain_of(r.get("from_addr") or "") for r in rows)
+        keywords = _subject_keywords([r.get("subject") or "" for r in rows])
+        samples = [
+            {"subject": r.get("subject"), "from": r.get("from_addr")}
+            for r in rows[:6]
+        ]
+        return {
+            "label": label,
+            "total": len(rows),
+            "senders": [{"domain": d, "count": n} for d, n in senders.most_common(top)],
+            "keywords": [{"keyword": k, "count": n} for k, n in keywords[:top]],
+            "samples": samples,
+        }
+
+    def slice_ids(self, label: str, domain: str = None, keyword: str = None, status: str = "PENDING") -> list:
+        """message_ids of a slice: proposals with `label`, optionally a sender domain and/or subject keyword."""
+        rows = [r for r in self.list_proposals_detailed(status) if r.get("label") == label]
+        if domain:
+            rows = [r for r in rows if _domain_of(r.get("from_addr") or "") == domain.lower()]
+        if keyword:
+            kw = keyword.lower()
+            rows = [r for r in rows if kw in (r.get("subject") or "").lower()]
+        return [r["message_id"] for r in rows]
 
     def update_proposals_status(self, message_ids: list, status: str) -> int:
         if not message_ids:

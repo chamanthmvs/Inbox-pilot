@@ -85,6 +85,35 @@ class ApprovalService:
 
         return {"updated": len(ids), "verdict": verdict, "domain": domain, "label": final_label}
 
+    def decide_slice(self, label, domain=None, keyword=None, verdict="APPROVED",
+                     action="label", new_label=None) -> dict:
+        """
+        Act on a SLICE of a label (optionally narrowed by sender domain and/or a
+        subject keyword) — approve/reject with an action, optionally relabel.
+        """
+        verdict = str(verdict).upper()
+        ids = self.store.slice_ids(label, domain=domain, keyword=keyword, status="PENDING")
+        if not ids:
+            return {"updated": 0, "verdict": verdict}
+
+        final_label = label
+        if verdict == "APPROVED":
+            if new_label and new_label != label:
+                self.store.relabel_proposals(ids, new_label)
+                final_label = new_label
+            action = (action or "label").lower()
+            if action not in ("label", "archive", "trash"):
+                action = "label"
+            self.store.set_proposals_action(ids, action)
+            self.store.update_proposals_status(ids, "APPROVED")
+            if domain:  # a per-sender decision is safe to learn
+                self.store.add_learned_rule(domain, final_label)
+            return {"updated": len(ids), "verdict": verdict, "label": final_label, "action": action}
+        elif verdict == "REJECTED":
+            self.store.update_proposals_status(ids, "REJECTED")
+            return {"updated": len(ids), "verdict": verdict}
+        return {"updated": 0, "verdict": verdict}
+
     def apply_decisions(self, decisions: dict) -> dict:
         """
         Apply a {message_id: verdict} map, where verdict is 'APPROVED' or

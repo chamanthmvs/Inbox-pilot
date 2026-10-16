@@ -54,7 +54,55 @@ class Taxonomy:
                     )
                 )
 
+        # Merge AI/user-grown sub-labels from a sibling taxonomy.local.yaml, so the
+        # hand-maintained taxonomy.yaml (with its comments) is never rewritten.
+        local_path = Path(path).with_name("taxonomy.local.yaml")
+        if local_path.exists():
+            existing = {label.name for label in labels}
+            local = yaml.safe_load(local_path.read_text()) or {}
+            for entry in local.get("labels", []) or []:
+                name = entry.get("name")
+                if not name or name in existing:
+                    continue
+                labels.append(
+                    LabelDef(
+                        name=name,
+                        description=entry.get("description", ""),
+                        keep=entry.get("keep", True),
+                        rules=entry.get("rules") or {},
+                        depth=name.count("/"),
+                    )
+                )
+                existing.add(name)
+
         return cls(labels, data.get("needs_review_label", "Needs Review"))
+
+    @staticmethod
+    def add_local_labels(entries, path: str = "config/taxonomy.yaml") -> None:
+        """
+        Append sub-labels to config/taxonomy.local.yaml (created if needed).
+        `entries`: list of {name, description?, keep?}. Idempotent by name.
+        """
+        local_path = Path(path).with_name("taxonomy.local.yaml")
+        data = {}
+        if local_path.exists():
+            data = yaml.safe_load(local_path.read_text()) or {}
+        labels = data.get("labels") or []
+        have = {l.get("name") for l in labels}
+        for e in entries:
+            if e.get("name") and e["name"] not in have:
+                labels.append({
+                    "name": e["name"],
+                    "description": e.get("description", ""),
+                    "keep": e.get("keep", True),
+                })
+                have.add(e["name"])
+        data["labels"] = labels
+        local_path.write_text(
+            "# AI/user-grown sub-labels, merged into the taxonomy at load time.\n"
+            "# Safe to edit or delete. The main taxonomy.yaml is never rewritten.\n"
+            + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+        )
 
     def names(self) -> list[str]:
         return [label.name for label in self.labels]

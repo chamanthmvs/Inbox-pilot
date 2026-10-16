@@ -74,6 +74,15 @@ export const api = {
 
   apply: () => fetch(`${BASE}/apply`, { method: "POST" }).then(json),
 
+  autopilot: (level = "balanced", threshold = 0.85) =>
+    fetch(`${BASE}/autopilot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level, threshold }),
+    }).then(json),
+
+  undo: () => fetch(`${BASE}/undo`, { method: "POST" }).then(json),
+
   audit: (limit = 50) => fetch(`${BASE}/audit?limit=${limit}`).then(json).then((d) => d.audit),
 
   streamUrl: (runId) => `${BASE}/runs/${encodeURIComponent(runId)}/stream`,

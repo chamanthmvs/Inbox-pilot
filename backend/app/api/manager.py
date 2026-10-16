@@ -134,6 +134,48 @@ class RunManager:
         threading.Thread(target=worker, daemon=True).start()
         return run
 
+    def start_autopilot(self, level: str = "balanced", threshold: float = 0.85) -> Run:
+        """
+        One click: auto-decide confident proposals per policy, then apply them.
+        Leaves only the unsure ones for review. Runs in the background with SSE.
+        """
+        from app.graph.autopilot import autopilot_decide
+
+        with self._lock:
+            if self.current and self.current.status in ("running", "applying"):
+                raise RuntimeError("a run is already in progress")
+            run = Run(str(uuid.uuid4()), mode="autopilot")
+            self.current = run
+
+        def worker():
+            try:
+                _, services = self._ensure_graph()
+
+                def sink(event):
+                    run.last_progress = event
+                    run.events.put({"type": "progress", **event})
+
+                sink({"phase": "item", "stage": "deciding", "done": 0, "total": 0})
+                decided = autopilot_decide(services.store, services.taxonomy, threshold, level)
+                applied = services.executor.apply_approved(on_progress=sink)
+                run.summary = {**decided, "apply": applied.to_dict(), "level": level, "threshold": threshold}
+                run.status = "done"
+                run.events.put({"type": "done", **run.snapshot()})
+            except Exception as error:
+                run.status = "error"
+                run.error = str(error)
+                run.events.put({"type": "error", "message": str(error)})
+            finally:
+                run.events.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return run
+
+    def undo_last(self) -> dict:
+        """Reverse the most recent apply run (remove labels, restore inbox, untrash)."""
+        _, services = self._ensure_graph()
+        return services.executor.undo_last()
+
     def apply_approved(self) -> dict:
         """
         Apply every APPROVED proposal directly (create+attach labels, audit),

@@ -13,6 +13,7 @@ export default function App() {
   const [needsReview, setNeedsReview] = useState([]);
   const [counts, setCounts] = useState({});
   const [applyResult, setApplyResult] = useState(null);
+  const [runSummary, setRunSummary] = useState(null);
   const [audit, setAudit] = useState([]);
   const [error, setError] = useState(null);
   const [connecting, setConnecting] = useState(false);
@@ -77,6 +78,7 @@ export default function App() {
       }
       if (data.type === "progress") setProgress(data);
       else if (data.type === "paused" || data.type === "done") {
+        if (data.summary) setRunSummary(data.summary);
         setPhase("idle");
         loadDashboard();
         es.close();
@@ -179,6 +181,31 @@ export default function App() {
     } finally {
       setPhase("idle");
       await loadDashboard();
+    }
+  }
+
+  function autoOrganize() {
+    setRunSummary(null);
+    setApplyResult(null);
+    launch(api.autopilot("balanced", 0.85));
+  }
+
+  async function undoLast() {
+    if (!window.confirm(
+      "Undo the last run?\n\nThis removes the labels just applied, puts archived emails back in your Inbox, and untrashes anything trashed. Those emails return to your review list."
+    )) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.undo();
+      setRunSummary(null);
+      setApplyResult(null);
+      await loadDashboard();
+      window.alert(`Undone — reversed ${fmt(r.undone || 0)} change(s).`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -315,9 +342,39 @@ export default function App() {
         </section>
       )}
 
+      {runSummary && idle && (
+        <div className="banner ok">
+          ✅ Auto-organized: labeled <b>{fmt(runSummary.auto_label)}</b>, archived <b>{fmt(runSummary.auto_archive)}</b>
+          {runSummary.apply ? <> · applied <b>{fmt(runSummary.apply.applied)}</b> to Gmail</> : null}
+          {" "}· <b>{fmt(runSummary.left_for_review)}</b> left for you to review.
+          {status && status.audit_count > 0 && (
+            <button className="linkbtn" style={{ marginLeft: "10px" }} onClick={undoLast}>↩ Undo this run</button>
+          )}
+        </div>
+      )}
+
       {/* Dashboard / review — shown whenever there is work, no live run needed */}
       {showDashboard && (
         <>
+          <div className="autopilot-bar">
+            <div>
+              <div className="ap-title">🚀 Auto-Organize</div>
+              <div className="muted small">
+                Apply everything I’m confident about (label + archive the noise) and only show you the
+                unsure ones. <b>Balanced · high confidence · never auto-trashes · reversible.</b>
+              </div>
+            </div>
+            <div className="ap-actions">
+              <button className="btn primary" disabled={busy || phase !== "idle" || (counts.PENDING || 0) === 0}
+                onClick={autoOrganize}>
+                🚀 Auto-Organize {fmt(counts.PENDING || 0)}
+              </button>
+              {status && status.audit_count > 0 && (
+                <button className="btn ghost" disabled={busy} onClick={undoLast}>↩ Undo last run</button>
+              )}
+            </div>
+          </div>
+
           {(counts.NEEDS_REVIEW || 0) > 0 && (
             <div className="banner info" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"14px",flexWrap:"wrap"}}>
               <span>
@@ -581,6 +638,7 @@ function fmt(n) {
 
 function stageTitle(phase, progress) {
   if (phase === "applying") return "Organizing your Gmail…";
+  if (progress && (progress.action || progress.stage)) return "🚀 Auto-organizing…";
   if (progress && progress.mode === "full") return "Reading & sorting your inbox…";
   return "Sorting your emails…";
 }
@@ -588,6 +646,12 @@ function stageTitle(phase, progress) {
 function stageText(phase, progress) {
   if (phase === "applying") return "Applying your approved changes in Gmail.";
   if (!progress) return "Getting started…";
+  if (progress.stage === "deciding") return "Deciding what’s safe to auto-apply…";
+  if (progress.action) {
+    const d = fmt(progress.done || 0);
+    const t = progress.total ? ` of ${fmt(progress.total)}` : "";
+    return `Applying confident changes… ${d}${t}`;
+  }
   const done = fmt(progress.done || 0);
   const total = progress.total ? ` of ${fmt(progress.total)}` : "";
   if (progress.mode === "full") {

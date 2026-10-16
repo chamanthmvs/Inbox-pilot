@@ -50,6 +50,20 @@ class ClassifyBody(BaseModel):
     reclassify: bool = False
 
 
+class AutopilotBody(BaseModel):
+    level: str = "balanced"      # conservative | balanced | aggressive
+    threshold: float = 0.85
+
+
+class SliceDecisionBody(BaseModel):
+    label: str
+    domain: str | None = None
+    keyword: str | None = None
+    verdict: str = "APPROVED"
+    action: str = "label"
+    new_label: str | None = None
+
+
 class GroupDecisionBody(BaseModel):
     domain: str
     label: str
@@ -175,6 +189,20 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
         except Exception as error:
             raise HTTPException(status_code=500, detail=str(error))
 
+    @app.post("/api/autopilot")
+    def autopilot(body: AutopilotBody = AutopilotBody(), mgr: RunManager = Depends(get_manager)):
+        try:
+            return mgr.start_autopilot(level=body.level, threshold=body.threshold).snapshot()
+        except RuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error))
+
+    @app.post("/api/undo")
+    def undo(mgr: RunManager = Depends(get_manager)):
+        try:
+            return mgr.undo_last()
+        except Exception as error:
+            raise HTTPException(status_code=500, detail=str(error))
+
     @app.get("/api/groups")
     def groups(
         status: str = Query(default="PENDING"),
@@ -193,6 +221,19 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
     @app.get("/api/learned")
     def learned(mgr: RunManager = Depends(get_manager)):
         return {"learned": mgr.store.list_learned()}
+
+    @app.get("/api/drill")
+    def drill(label: str, mgr: RunManager = Depends(get_manager)):
+        return mgr.store.drilldown(label)
+
+    @app.post("/api/slices/decide")
+    def decide_slice(body: SliceDecisionBody, mgr: RunManager = Depends(get_manager)):
+        if body.new_label and not mgr.taxonomy.is_valid(body.new_label):
+            raise HTTPException(status_code=400, detail=f"unknown label: {body.new_label}")
+        return ApprovalService(mgr.store).decide_slice(
+            body.label, domain=body.domain, keyword=body.keyword,
+            verdict=body.verdict, action=body.action, new_label=body.new_label,
+        )
 
     @app.post("/api/proposals/{message_id}/label")
     def set_label(

@@ -160,6 +160,15 @@ def main():
         check("m3 now APPROVED with label", m3["status"] == "APPROVED" and m3["label"] == "Personal")
         check("reject bad label", http.post("/api/proposals/m3/label", json={"label": "Nope"}).status_code == 400)
 
+        print("Auto-pilot + undo endpoints:")
+        ap = http.post("/api/autopilot", json={"level": "balanced", "threshold": 0.85}).json()
+        check("autopilot returns a run", bool(ap.get("run_id")))
+        wait_until(lambda: http.get("/api/status").json()["run"]["status"] in ("done", "error"))
+        check("autopilot finished", http.get("/api/status").json()["run"]["status"] == "done")
+        u = http.post("/api/undo").json()
+        check("undo returns a count", "undone" in u)
+        check("drill endpoint works", "senders" in http.get("/api/drill", params={"label": "Personal"}).json())
+
     print("\nAll Stage-4 offline tests passed.")
 
 

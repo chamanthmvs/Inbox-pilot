@@ -16,7 +16,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from app.classifier.runner import build_classifier
+from app.classifier.taxonomy import Taxonomy
 from app.graph.approval import ApprovalService
+from app.graph.autopilot import autopilot_decide
 from app.graph.executor import LabelExecutor
 from app.graph.workflow import build_workflow
 from app.ingestion.service import IngestionService
@@ -163,6 +165,41 @@ def test_executor_actions():
         store.close()
 
 
+def test_autopilot_and_undo():
+    print("Auto-Pilot (balanced) + Undo:")
+    tax = Taxonomy.load(TAX_PATH)
+    with tempfile.TemporaryDirectory() as d:
+        store = Store(os.path.join(d, "t.db"))
+        client = FakeGmail({})
+        seed = [
+            ("p1", "Personal", "rules", 1.0, "PENDING"),      # confident keep → label
+            ("p2", "Promotions", "llm", 0.95, "PENDING"),     # confident noise → archive
+            ("p3", "Personal", "llm", 0.50, "PENDING"),       # not confident → review
+            ("p4", "Shopping/Orders & Delivery", "needs_review", 0.0, "NEEDS_REVIEW"),
+        ]
+        for mid, label, method, conf, status in seed:
+            store.upsert_message(meta(mid))
+            store.upsert_proposal(mid, label, method, conf, "r", status)
+
+        decided = autopilot_decide(store, tax, threshold=0.85, level="balanced")
+        check("auto-labeled 1 (p1)", decided["auto_label"] == 1)
+        check("auto-archived 1 (p2)", decided["auto_archive"] == 1)
+        check("left 1 for review (p3)", decided["left_for_review"] == 1)
+
+        res = LabelExecutor(client, store).apply_approved()
+        check("applied 2", res.applied == 2)
+        check("p3 still pending", store.get_proposal("p3")["status"] == "PENDING")
+        calls = {c[0]: c for c in client.modify_calls}
+        check("p2 archived (removes INBOX)", "INBOX" in calls["p2"][2])
+        check("batch_id recorded", bool(res.batch_id))
+
+        undo = LabelExecutor(client, store).undo_last()
+        check("undo reversed 2", undo["undone"] == 2)
+        check("p1 back to PENDING", store.get_proposal("p1")["status"] == "PENDING")
+        check("p2 back to PENDING", store.get_proposal("p2")["status"] == "PENDING")
+        store.close()
+
+
 def test_workflow_interrupt_resume():
     print("Workflow (ingest → classify → interrupt → resume → apply):")
     with tempfile.TemporaryDirectory() as d:
@@ -207,5 +244,6 @@ if __name__ == "__main__":
     test_executor_real()
     test_executor_dry_run()
     test_executor_actions()
+    test_autopilot_and_undo()
     test_workflow_interrupt_resume()
     print("\nAll Stage-3 offline tests passed.")

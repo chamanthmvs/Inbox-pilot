@@ -24,3 +24,6 @@ backend/tests/fixtures/raw_email.json
 
 # AI-assistant working notes — keep local, not published
 CLAUDE.md
+
+# AI/user-grown sub-labels (reflects a personal inbox)
+backend/config/taxonomy.local.yaml

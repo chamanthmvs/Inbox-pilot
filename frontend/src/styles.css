@@ -143,6 +143,12 @@ body {
 @keyframes spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce){ .spinner{ animation:none; } }
 .samples-wrap { padding: 8px 16px 14px 40px; }
+.autopilot-bar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  background: linear-gradient(135deg, color-mix(in srgb,var(--accent) 14%, var(--surface)), var(--surface));
+  border:1px solid color-mix(in srgb,var(--accent) 40%, var(--line)); border-radius:var(--radius); padding:16px 20px; margin-bottom:16px; box-shadow:var(--shadow); }
+.autopilot-bar .ap-title { font-size:18px; font-weight:700; margin-bottom:2px; }
+.autopilot-bar .ap-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.autopilot-bar .btn.primary { font-size:15px; padding:11px 20px; }
 .group-title .count { background: var(--accent); color:#fff; border:none; }
 .group-title .domain { font-weight:700; }
 

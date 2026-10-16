@@ -294,6 +294,36 @@ def test_full_ingest():
         store.close()
 
 
+def test_drill_and_slice():
+    print("Drill-down facets + slice decide:")
+    from app.graph.approval import ApprovalService
+    with tempfile.TemporaryDirectory() as d:
+        store = Store(os.path.join(d, "t.db"))
+        data = [
+            ("d1", "alerts@sbi.co.in", "Debit alert on your account"),
+            ("d2", "alerts@sbi.co.in", "Debit alert received today"),
+            ("d3", "noreply@hdfcbank.net", "Credit card statement ready"),
+            ("d4", "alerts@sbi.co.in", "E-Mandate set successfully"),
+        ]
+        for mid, frm, subj in data:
+            store.upsert_message(msg(mid, frm=frm, subject=subj))
+            store.upsert_proposal(mid, "Bank/Alerts & Notifications", "llm", 0.9, "r", "PENDING")
+
+        drill = store.drilldown("Bank/Alerts & Notifications")
+        check("drill total is 4", drill["total"] == 4)
+        check("top sender is sbi.co.in (3)",
+              drill["senders"][0]["domain"] == "sbi.co.in" and drill["senders"][0]["count"] == 3)
+        check("keywords include 'debit alert'",
+              "debit alert" in {k["keyword"] for k in drill["keywords"]})
+
+        res = ApprovalService(store).decide_slice(
+            "Bank/Alerts & Notifications", keyword="debit alert", verdict="APPROVED", action="label")
+        check("approved the 'debit alert' slice (2)", res["updated"] == 2)
+        check("d1 approved", store.get_proposal("d1")["status"] == "APPROVED")
+        check("d3 untouched (pending)", store.get_proposal("d3")["status"] == "PENDING")
+        store.close()
+
+
 def test_proposals_store_and_skip():
     print("Proposals store + classify_store skip-decided:")
     tax = Taxonomy.load(TAX_PATH)
@@ -340,5 +370,6 @@ if __name__ == "__main__":
     test_learned_rules()
     test_group_decide()
     test_full_ingest()
+    test_drill_and_slice()
     test_proposals_store_and_skip()
     print("\nAll Stage-2 offline tests passed.")

@@ -19,6 +19,8 @@ export default function App() {
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [drill, setDrill] = useState(null);       // label being drilled, or null
+  const [drillData, setDrillData] = useState(null);
   const esRef = useRef(null);
 
   const connected = !!(status && status.authenticated);
@@ -28,7 +30,7 @@ export default function App() {
   const approvedCount = counts.APPROVED || 0;
   const hasWork = groups.length > 0 || needsReview.length > 0 || approvedCount > 0;
   const idle = phase === "idle";
-  const showDashboard = idle && hasWork;
+  const showDashboard = idle && hasWork && !drill;
 
   async function refreshStatus() {
     try {
@@ -193,6 +195,43 @@ export default function App() {
       setPhase("idle");
       await loadDashboard();
     }
+  }
+
+  async function openDrill(label) {
+    setDrill(label);
+    setDrillData(null);
+    try {
+      setDrillData(await api.drill(label));
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function closeDrill() {
+    setDrill(null);
+    setDrillData(null);
+  }
+
+  async function sliceAct(kind, value, action) {
+    if (action === "trash" && !window.confirm(`Trash the "${value}" slice? Recoverable in Gmail ~30 days.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.decideSlice({ label: drill, [kind]: value, verdict: "APPROVED", action });
+      setDrillData(await api.drill(drill));
+      await refreshStatus();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function splitWithAI() {
+    const label = drill;
+    closeDrill();
+    setRunSummary(null);
+    launch(api.segregate(label));
   }
 
   function autoOrganize() {
@@ -365,7 +404,17 @@ export default function App() {
         </section>
       )}
 
-      {runSummary && idle && (
+      {runSummary && idle && runSummary.sublabels !== undefined && (
+        <div className={`banner ${runSummary.error ? "info" : "ok"}`}>
+          {runSummary.error
+            ? `ℹ️ ${runSummary.error}`
+            : <>✂️ Split <b>{runSummary.label}</b> into <b>{runSummary.sublabels.length}</b> sub-label(s)
+                — moved <b>{fmt(runSummary.moved)}</b>, <b>{fmt(runSummary.unchanged)}</b> unchanged.
+                The finer groups are below for review.</>}
+        </div>
+      )}
+
+      {runSummary && idle && runSummary.auto_label !== undefined && (
         <div className="banner ok">
           ✅ Auto-organized: labeled <b>{fmt(runSummary.auto_label)}</b>, archived <b>{fmt(runSummary.auto_archive)}</b>
           {runSummary.apply ? <> · applied <b>{fmt(runSummary.apply.applied)}</b> to Gmail</> : null}
@@ -374,6 +423,43 @@ export default function App() {
             <button className="linkbtn" style={{ marginLeft: "10px" }} onClick={undoLast}>↩ Undo this run</button>
           )}
         </div>
+      )}
+
+      {/* Drill-down: deep review of one label */}
+      {idle && drill && (
+        <section className="card">
+          <div className="row between">
+            <h2>🔍 {drill}</h2>
+            <button className="btn ghost sm" onClick={closeDrill}>← Back</button>
+          </div>
+          {!drillData ? (
+            <p className="muted">Analyzing…</p>
+          ) : (
+            <>
+              <p className="muted small">
+                {fmt(drillData.total)} emails in this label. Let the AI split it into finer
+                sub-categories, or act on a specific slice below.
+              </p>
+              <button className="btn primary" disabled={busy || !llmEnabled}
+                onClick={splitWithAI}
+                title={llmEnabled ? "" : "Turn on AI (add ANTHROPIC_API_KEY) to use this"}>
+                ✨ Split with AI into sub-categories
+              </button>
+              {!llmEnabled && <span className="muted small" style={{ marginLeft: 10 }}>AI is off</span>}
+
+              <h3>By sender</h3>
+              {drillData.senders.map((s) => (
+                <SliceRow key={"d" + s.domain} name={s.domain || "(no domain)"} count={s.count}
+                  busy={busy} onAct={(a) => sliceAct("domain", s.domain, a)} />
+              ))}
+              <h3>By subject keyword</h3>
+              {drillData.keywords.map((k) => (
+                <SliceRow key={"k" + k.keyword} name={`“${k.keyword}”`} count={k.count}
+                  busy={busy} onAct={(a) => sliceAct("keyword", k.keyword, a)} />
+              ))}
+            </>
+          )}
+        </section>
       )}
 
       {/* Dashboard / review — shown whenever there is work, no live run needed */}
@@ -465,6 +551,7 @@ export default function App() {
                 taxonomy={taxonomy}
                 busy={busy}
                 onDecide={decideGroup}
+                onDrill={openDrill}
               />
             ))}
           </section>
@@ -564,7 +651,18 @@ function CategoryBars({ groups }) {
   );
 }
 
-function GroupCard({ group, taxonomy, busy, onDecide }) {
+function SliceRow({ name, count, busy, onAct }) {
+  return (
+    <div className="review-row">
+      <div className="grow"><b>{name}</b> <span className="muted small">· {fmt(count)}</span></div>
+      <button className="btn good sm" disabled={busy} onClick={() => onAct("label")}>✓ Keep</button>
+      <button className="btn sm" disabled={busy} onClick={() => onAct("archive")}>📥 Archive</button>
+      <button className="btn ghost sm" disabled={busy} onClick={() => onAct("trash")}>🗑 Trash</button>
+    </div>
+  );
+}
+
+function GroupCard({ group, taxonomy, busy, onDecide, onDrill }) {
   const [open, setOpen] = useState(false);
   const [relabel, setRelabel] = useState("");
   const [action, setAction] = useState("label");
@@ -591,6 +689,10 @@ function GroupCard({ group, taxonomy, busy, onDecide }) {
         <button className="expand" onClick={() => setOpen(!open)} aria-label="expand">
           {open ? "▾" : "▸"}
         </button>
+        {onDrill && group.label && (
+          <button className="btn ghost sm" disabled={busy} title="Deep review / split this label"
+            onClick={() => onDrill(group.label)}>🔍</button>
+        )}
         <div className="grow">
           <div className="group-title">
             <span className="count">{fmt(group.count)}</span>

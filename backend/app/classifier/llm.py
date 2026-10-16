@@ -187,3 +187,107 @@ class LLMClassifier:
                     reason=f"llm: {item.get('reason', '')}",
                 )
         return out
+
+    # -- re-segregate: propose finer sub-labels, then assign into them ---------
+
+    def propose_sublabels(self, parent_label, sample_metas, n=6):
+        """Propose 3–n finer sub-labels (nested under parent) from the samples only."""
+        client = self._client_or_none()
+        if client is None:
+            return []
+        lines = [
+            f'from="{m.from_addr}" subject="{m.subject}"'
+            for m in sample_metas[:40]
+        ]
+        system = (
+            "You refine one email category into finer sub-categories. Using ONLY the "
+            "senders and subjects shown, propose 3 to {n} non-overlapping sub-categories "
+            "that genuinely appear in this set. Each name MUST start with '{p}/' and be "
+            "short and concrete. Do NOT invent sub-categories not supported by the samples; "
+            "if the set is already uniform, return fewer (or an empty array).\n"
+            'Return ONLY a JSON array: [{{"name":"{p}/<Short Name>","description":"<short>"}}].'
+        ).format(n=n, p=parent_label)
+        user = "Emails in this category:\n" + "\n".join(lines)
+        try:
+            resp = client.messages.create(
+                model=self.model, max_tokens=700, output_config={"effort": "low"},
+                system=system, messages=[{"role": "user", "content": user}],
+            )
+        except Exception:
+            return []
+        if getattr(resp, "stop_reason", None) == "refusal":
+            return []
+        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+        data = _first_json(text, "[", "]")
+        if not isinstance(data, list):
+            return []
+        out = []
+        prefix = parent_label + "/"
+        seen = set()
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            name = (item.get("name") or "").strip()
+            if name.startswith(prefix) and name not in seen and len(name) > len(prefix):
+                seen.add(name)
+                out.append({"name": name, "description": item.get("description", "")})
+        return out
+
+    def assign_batch(self, metas, options):
+        """Assign each email to one of `options` (sub-label names) or None."""
+        out = {m.id: None for m in metas}
+        client = self._client_or_none()
+        if client is None or not metas or not options:
+            return out
+        optset = set(options)
+        menu = "\n".join(f"- {o}" for o in options)
+        for i in range(0, len(metas), self.chunk_size):
+            chunk = metas[i : i + self.chunk_size]
+            out.update(self._assign_chunk(client, chunk, menu, optset))
+        return out
+
+    def _assign_chunk(self, client, chunk, menu, optset):
+        out = {m.id: None for m in chunk}
+        system = (
+            "Assign each email to EXACTLY one sub-category from the list below, or the "
+            "literal word UNKNOWN if none clearly fits. Decide ONLY from the From, "
+            "Subject and Preview shown — no assumptions, no invented categories. Copy a "
+            "name EXACTLY as written.\n\n"
+            f"SUB-CATEGORIES:\n{menu}"
+        )
+        lines = [
+            f'[{idx}] from="{m.from_addr}" subject="{m.subject}" preview="{(m.snippet or "")[:140]}"'
+            for idx, m in enumerate(chunk)
+        ]
+        user = (
+            "Respond with ONLY a JSON array, one object per email: "
+            '[{"index": <n>, "label": "<exact sub-category or UNKNOWN>", '
+            '"confidence": <0..1>, "reason": "<cite the signal>"}].\n\n' + "\n".join(lines)
+        )
+        try:
+            resp = client.messages.create(
+                model=self.model, max_tokens=2048, output_config={"effort": "low"},
+                system=system, messages=[{"role": "user", "content": user}],
+            )
+        except Exception:
+            return out
+        if getattr(resp, "stop_reason", None) == "refusal":
+            return out
+        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+        data = _first_json(text, "[", "]")
+        if not isinstance(data, list):
+            return out
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            idx = item.get("index")
+            if not isinstance(idx, int) or idx < 0 or idx >= len(chunk):
+                continue
+            label = item.get("label")
+            try:
+                conf = float(item.get("confidence", 0))
+            except (TypeError, ValueError):
+                conf = 0.0
+            if label in optset and conf >= self.min_confidence:
+                out[chunk[idx].id] = LLMMatch(label, conf, f"llm: {item.get('reason','')}")
+        return out

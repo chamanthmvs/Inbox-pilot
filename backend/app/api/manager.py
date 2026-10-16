@@ -177,6 +177,46 @@ class RunManager:
         _, services = self._ensure_graph()
         return services.executor.undo_last()
 
+    def start_segregate(self, label: str) -> Run:
+        """Background: AI-split one label into finer nested sub-labels (no OAuth needed)."""
+        from app.classifier.runner import build_classifier
+        from app.classifier.segregate import segregate_label
+
+        with self._lock:
+            if self.current and self.current.status in ("running", "applying"):
+                raise RuntimeError("a run is already in progress")
+            run = Run(str(uuid.uuid4()), mode="segregate")
+            self.current = run
+
+        def worker():
+            try:
+                classifier, _ = build_classifier(
+                    taxonomy_path=self.settings.taxonomy_path,
+                    use_llm=self.settings.use_llm,
+                    model=self.settings.classifier_model,
+                )
+
+                def sink(event):
+                    run.last_progress = event
+                    run.events.put({"type": "progress", **event})
+
+                summary = segregate_label(
+                    self.store, classifier, label,
+                    taxonomy_path=self.settings.taxonomy_path, on_progress=sink,
+                )
+                run.summary = summary
+                run.status = "done"
+                run.events.put({"type": "done", **run.snapshot()})
+            except Exception as error:
+                run.status = "error"
+                run.error = str(error)
+                run.events.put({"type": "error", "message": str(error)})
+            finally:
+                run.events.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return run
+
     def apply_approved(self) -> dict:
         """
         Apply every APPROVED proposal directly (create+attach labels, audit),

@@ -357,6 +357,50 @@ def test_drill_and_slice():
         store.close()
 
 
+def test_segregate():
+    print("AI re-segregate (split a label into sub-labels):")
+    from app.classifier.segregate import segregate_label
+    tax = Taxonomy.load(TAX_PATH)
+    PARENT = "Bank/Alerts & Notifications"
+
+    class SegLLM:
+        enabled = True
+        model = "fake"
+        def propose_sublabels(self, parent, samples, n=6):
+            return [{"name": f"{parent}/Debit", "description": "debit"},
+                    {"name": f"{parent}/Statements", "description": "statements"}]
+        def assign_batch(self, metas, options):
+            out = {}
+            for m in metas:
+                s = (m.subject or "").lower()
+                if "debit" in s:
+                    out[m.id] = LLMMatch(options[0], 0.9, "x")
+                elif "statement" in s:
+                    out[m.id] = LLMMatch(options[1], 0.9, "x")
+                else:
+                    out[m.id] = None
+            return out
+
+    classifier = Classifier(tax, RulesClassifier(tax), SegLLM())
+    with tempfile.TemporaryDirectory() as d:
+        store = Store(os.path.join(d, "t.db"))
+        rows = [("s1", "Debit alert received"), ("s2", "Debit alert on card"),
+                ("s3", "Monthly statement ready"), ("s4", "Something else")]
+        for mid, subj in rows:
+            store.upsert_message(msg(mid, frm="x@sbi.co.in", subject=subj))
+            store.upsert_proposal(mid, PARENT, "rules", 1.0, "r", "PENDING")
+
+        summary = segregate_label(store, classifier, PARENT,
+                                  taxonomy_path=os.path.join(d, "taxonomy.yaml"))
+        check("moved 3 into sub-labels", summary["moved"] == 3)
+        check("1 unchanged", summary["unchanged"] == 1)
+        check("s1 relabeled to Debit sub-label",
+              store.get_proposal("s1")["label"] == f"{PARENT}/Debit")
+        check("s4 stays on parent", store.get_proposal("s4")["label"] == PARENT)
+        check("sub-labels persisted locally", os.path.exists(os.path.join(d, "taxonomy.local.yaml")))
+        store.close()
+
+
 def test_proposals_store_and_skip():
     print("Proposals store + classify_store skip-decided:")
     tax = Taxonomy.load(TAX_PATH)
@@ -405,5 +449,6 @@ if __name__ == "__main__":
     test_group_decide()
     test_full_ingest()
     test_drill_and_slice()
+    test_segregate()
     test_proposals_store_and_skip()
     print("\nAll Stage-2 offline tests passed.")

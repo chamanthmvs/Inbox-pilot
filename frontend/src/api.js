@@ -90,6 +90,22 @@ export const api = {
       body: JSON.stringify({ enabled }),
     }).then(json),
 
+  drill: (label) => fetch(`${BASE}/drill?label=${encodeURIComponent(label)}`).then(json),
+
+  decideSlice: (payload) =>
+    fetch(`${BASE}/slices/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json),
+
+  segregate: (label) =>
+    fetch(`${BASE}/segregate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    }).then(json),
+
   audit: (limit = 50) => fetch(`${BASE}/audit?limit=${limit}`).then(json).then((d) => d.audit),
 
   streamUrl: (runId) => `${BASE}/runs/${encodeURIComponent(runId)}/stream`,

@@ -64,6 +64,10 @@ class SliceDecisionBody(BaseModel):
     new_label: str | None = None
 
 
+class SegregateBody(BaseModel):
+    label: str
+
+
 class GroupDecisionBody(BaseModel):
     domain: str
     label: str
@@ -230,6 +234,13 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
     @app.get("/api/drill")
     def drill(label: str, mgr: RunManager = Depends(get_manager)):
         return mgr.store.drilldown(label)
+
+    @app.post("/api/segregate")
+    def segregate(body: SegregateBody, mgr: RunManager = Depends(get_manager)):
+        try:
+            return mgr.start_segregate(body.label).snapshot()
+        except RuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error))
 
     @app.post("/api/slices/decide")
     def decide_slice(body: SliceDecisionBody, mgr: RunManager = Depends(get_manager)):

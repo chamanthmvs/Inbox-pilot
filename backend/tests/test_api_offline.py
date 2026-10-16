@@ -168,6 +168,8 @@ def main():
         u = http.post("/api/undo").json()
         check("undo returns a count", "undone" in u)
         check("drill endpoint works", "senders" in http.get("/api/drill", params={"label": "Personal"}).json())
+        check("segregate endpoint returns a run",
+              bool(http.post("/api/segregate", json={"label": "Personal"}).json().get("run_id")))
 
     print("\nAll Stage-4 offline tests passed.")
 

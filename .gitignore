@@ -27,3 +27,8 @@ CLAUDE.md
 
 # AI/user-grown sub-labels (reflects a personal inbox)
 backend/config/taxonomy.local.yaml
+
+# Any SQLite store, anywhere (defensive — stores hold mailbox metadata)
+*.db
+*.db-wal
+*.db-shm

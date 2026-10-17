@@ -502,11 +502,16 @@ export default function App() {
           )}
 
           <section className="tiles">
-            <Tile label="Sender groups to review" value={fmt(groups.length)} accent />
-            <Tile label="Emails waiting" value={fmt(counts.PENDING || 0)} />
-            <Tile label="Approved — ready to apply" value={fmt(approvedCount)} good />
-            <Tile label="Need your input" value={fmt(counts.NEEDS_REVIEW || 0)} warn />
+            <Tile label="Already organized" value={fmt(counts.APPLIED || 0)} good />
+            <Tile label="Labeled · awaiting your OK" value={fmt(counts.PENDING || 0)} accent />
+            <Tile label="AI unsure · needs you" value={fmt(counts.NEEDS_REVIEW || 0)} warn />
+            <Tile label="Sender groups to review" value={fmt(groups.length)} />
           </section>
+          <p className="muted small" style={{ marginTop: "-6px", marginBottom: "16px" }}>
+            <b>Already organized</b> is done in Gmail and never touched again. <b>Awaiting your OK</b> already
+            have a suggested label — just approve (we don’t re-label these). <b>AI unsure</b> are the only ones
+            re-checked when you run again.
+          </p>
 
           <CategoryBars groups={groups} />
 

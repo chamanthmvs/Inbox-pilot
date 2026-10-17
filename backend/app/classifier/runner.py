@@ -151,19 +151,35 @@ def classify_messages(store, classifier, metas, result=None, on_progress=None,
     return result
 
 
+DECIDED = ("APPROVED", "REJECTED", "APPLIED")
+
+
 def classify_store(store, classifier, reclassify=False, on_progress=None, verify_rules=False) -> ClassifyResult:
-    """Classify every undecided message in the store (incremental LLM passes)."""
+    """
+    Default pass: classify only the UNCLASSIFIED (no proposal) and NEEDS_REVIEW
+    messages. Already-labeled PENDING mail is LEFT ALONE (it's awaiting your
+    approval, not re-labeling), and applied/approved/rejected are never touched.
+    `reclassify=True` re-does everything except decided (to re-run after a taxonomy
+    or prompt change).
+    """
+    status_map = store.proposal_status_map()
     todo = []
-    skipped = 0
+    skipped_decided = 0
+    skipped_pending = 0
     for meta in store.iter_messages():
-        if not reclassify and store.has_decided_proposal(meta.id):
-            skipped += 1
-        else:
-            todo.append(meta)
+        st = status_map.get(meta.id)
+        if st in DECIDED:
+            skipped_decided += 1
+        elif reclassify:
+            todo.append(meta)                 # re-do PENDING + NEEDS_REVIEW + new
+        elif st is None or st == "NEEDS_REVIEW":
+            todo.append(meta)                 # classify new + retry the unsure
+        else:  # PENDING with a label → leave it for review, don't re-label
+            skipped_pending += 1
 
     _emit(on_progress, phase="start", done=0, total=len(todo))
     result = classify_messages(store, classifier, todo, on_progress=on_progress,
                                total=len(todo), verify_rules=verify_rules)
-    result.skipped_decided = skipped
+    result.skipped_decided = skipped_decided
     _emit(on_progress, phase="done", done=len(todo), total=len(todo))
     return result

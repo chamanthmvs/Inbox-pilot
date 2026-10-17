@@ -268,6 +268,13 @@ class Store:
         ).fetchone()
         return dict(row) if row else None
 
+    def proposal_status_map(self) -> dict:
+        """{message_id: status} for all proposals — one query (for fast classify planning)."""
+        return {
+            r["message_id"]: r["status"]
+            for r in self.conn.execute("SELECT message_id, status FROM proposals")
+        }
+
     def has_decided_proposal(self, message_id: str) -> bool:
         """True if a human has already approved/rejected/applied this message."""
         row = self.conn.execute(

@@ -103,8 +103,6 @@ categories:
         keep: true
         rules:
           from_domains:
-            - zerodha.net
-            - zerodha.com
             - kfintech.com
             - camsonline.com
             - motilaloswal.com
@@ -126,23 +124,6 @@ categories:
         rules:
           from_domains: ["nse.co.in", "nseindia.com", "bseindia.com", "cdslindia.com", "nsdl.co.in"]
           subject_contains: ["securities", "demat", "contract note", "holding statement"]
-      - name: Finance/AI & API Billing
-        description: Billing, usage, credits and receipts from AI/LLM and developer-API providers (OpenAI, Anthropic/Claude, Groq, etc.).
-        keep: true
-        rules:
-          from_domains:
-            - openai.com
-            - anthropic.com
-            - groq.com
-            - cohere.com
-            - mistral.ai
-            - x.ai
-            - perplexity.ai
-            - replicate.com
-            - together.ai
-            - huggingface.co
-            - openrouter.ai
-          subject_contains: ["api usage", "api credits", "token usage", "usage summary"]
 
   # --------------------------------------------------------------- Job
   - name: Job & Career
@@ -303,6 +284,68 @@ categories:
     keep: false
     rules:
       subject_contains: ["sale", "% off", "coupon", "discount", "limited time", "flash sale", "offer ends"]
+
+  # ---------------------------------------------------------------------------
+  # SENDER-DOMAIN folders. These route ONLY by who sent the email (the sender's
+  # domain) — never by words in the subject/body. "github" in a subject does NOT
+  # go here; only mail actually FROM github.com does. Sub-folders (e.g. Bills,
+  # Subscriptions) are best created later with "✨ Split with AI" on the folder.
+  # ---------------------------------------------------------------------------
+  - name: AI Tools
+    description: Accounts, billing and notices from AI / LLM providers (by sender).
+    keep: true
+    children:
+      - name: AI Tools/Claude
+        description: Mail from Anthropic / Claude.
+        keep: true
+        rules:
+          from_domains: ["anthropic.com", "claude.ai", "mail.anthropic.com"]
+      - name: AI Tools/OpenAI
+        description: Mail from OpenAI / ChatGPT.
+        keep: true
+        rules:
+          from_domains: ["openai.com", "chatgpt.com", "email.openai.com"]
+      - name: AI Tools/Groq
+        description: Mail from Groq.
+        keep: true
+        rules:
+          from_domains: ["groq.com"]
+      - name: AI Tools/Other
+        description: Other AI/LLM providers (Mistral, Cohere, Perplexity, HuggingFace, etc.).
+        keep: true
+        rules:
+          from_domains: ["mistral.ai", "cohere.com", "x.ai", "perplexity.ai", "replicate.com", "together.ai", "huggingface.co", "openrouter.ai"]
+
+  - name: Deployment
+    description: Hosting / deployment platforms (by sender).
+    keep: true
+    children:
+      - name: Deployment/Vercel
+        description: Mail from Vercel.
+        keep: true
+        rules:
+          from_domains: ["vercel.com"]
+      - name: Deployment/Render
+        description: Mail from Render.
+        keep: true
+        rules:
+          from_domains: ["render.com", "mail.render.com"]
+
+  - name: Developer Tools
+    description: Developer platforms and services (by sender).
+    keep: true
+    children:
+      - name: Developer Tools/GitHub
+        description: Mail from GitHub.
+        keep: true
+        rules:
+          from_domains: ["github.com"]
+
+  - name: Zerodha
+    description: Mail from Zerodha (broker) — statements, orders, Coin, alerts.
+    keep: true
+    rules:
+      from_domains: ["zerodha.com", "zerodha.net"]
 
 # Workflow state (NOT a topic): low-confidence messages become NEEDS_REVIEW.
 needs_review_label: "Needs Review"

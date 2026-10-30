@@ -53,30 +53,24 @@ def _has_word(needle: str, haystack: str) -> bool:
     return re.search(left + re.escape(n) + right, (haystack or "").lower()) is not None
 
 
-def _strongest_match(rules: dict, sender: str, subject: str, domain: str):
-    """Return (type_weight, reason) for the strongest matching rule, or None."""
-    best = None
-
+def _domain_match(rules: dict, domain: str):
+    """Reason string if the sender's domain matches a from_domains entry, else None."""
     for dom in rules.get("from_domains", []) or []:
         d = dom.lower()
         if domain == d or domain.endswith("." + d):
-            cand = (TYPE_WEIGHT["from_domains"], f"sender domain is '{dom}'")
-            if best is None or cand[0] > best[0]:
-                best = cand
+            return f"sender domain is '{dom}'"
+    return None
 
+
+def _content_match(rules: dict, sender: str, subject: str):
+    """(weight, reason) for the best sender-substring / subject-word match, else None."""
     for needle in rules.get("from_contains", []) or []:
         if _has_word(needle, sender):
-            cand = (TYPE_WEIGHT["from_contains"], f"sender mentions '{needle}'")
-            if best is None or cand[0] > best[0]:
-                best = cand
-
+            return (TYPE_WEIGHT["from_contains"], f"sender mentions '{needle}'")
     for needle in rules.get("subject_contains", []) or []:
         if _has_word(needle, subject):
-            cand = (TYPE_WEIGHT["subject_contains"], f"subject mentions '{needle}'")
-            if best is None or cand[0] > best[0]:
-                best = cand
-
-    return best
+            return (TYPE_WEIGHT["subject_contains"], f"subject mentions '{needle}'")
+    return None
 
 
 # Senders that are clearly automated/bulk, not a person.
@@ -111,29 +105,38 @@ class RulesClassifier:
         subject = meta.subject or ""
         domain = _domain_of(sender)
 
-        best_label = None
-        best_key = None
-        best_reason = None
+        domain_hits = []   # (label, reason)
+        content_hits = []  # (label, reason, weight)
 
         for label in self.taxonomy.iter_labels():
             if not label.rules:
                 continue
-            match = _strongest_match(label.rules, sender, subject, domain)
-            if match is None:
-                continue
-            type_weight, reason = match
-            key = (label.depth, type_weight)  # prefer deeper, then stronger
-            if best_key is None or key > best_key:
-                best_key = key
-                best_label = label
-                best_reason = reason
+            dmatch = _domain_match(label.rules, domain)
+            if dmatch:
+                domain_hits.append((label, dmatch))
+            cmatch = _content_match(label.rules, sender, subject)
+            if cmatch:
+                content_hits.append((label, cmatch[1], cmatch[0]))
 
-        if best_label is not None:
-            return RuleMatch(
-                label=best_label.name,
-                reason=f"rule: {best_reason}",
-                score=best_key,
-            )
+        # Sender-domain is authoritative ACROSS categories: a domain match wins
+        # over any subject/keyword match in a different family. But a more specific
+        # sub-label of the SAME matched domain family still wins (e.g. a bank domain
+        # → Bank, but its "debit alert" subject → Bank/Alerts & Notifications).
+        if domain_hits:
+            dom_label, dom_reason = max(domain_hits, key=lambda h: h[0].depth)
+            prefix = dom_label.name + "/"
+            descendants = [
+                h for h in content_hits
+                if h[0].name.startswith(prefix) and h[0].depth > dom_label.depth
+            ]
+            if descendants:
+                best = max(descendants, key=lambda h: (h[0].depth, h[2]))
+                return RuleMatch(best[0].name, f"rule: {best[1]}", (best[0].depth, best[2]))
+            return RuleMatch(dom_label.name, f"rule: {dom_reason}", (dom_label.depth, 3))
+
+        if content_hits:
+            best = max(content_hits, key=lambda h: (h[0].depth, h[2]))
+            return RuleMatch(best[0].name, f"rule: {best[1]}", (best[0].depth, best[2]))
 
         # Lowest-priority fallback: a human 1:1 sender → Personal.
         if self.taxonomy.is_valid("Personal") and _looks_personal(sender, domain):

@@ -108,6 +108,24 @@ def test_rules_real_taxonomy():
     check("unknown corp no-match → None (goes to LLM)", rules.classify(none) is None)
 
 
+def test_sender_domain_folders():
+    print("Sender-domain folders (route by WHO sent it, not subject words):")
+    tax = Taxonomy.load(TAX_PATH)
+    r = RulesClassifier(tax)
+    def L(frm, subj=""):
+        m = r.classify(msg(frm=frm, subject=subj))
+        return m.label if m else None
+    check("github.com sender → Developer Tools/GitHub", L("noreply@github.com", "anything") == "Developer Tools/GitHub")
+    check("'github' in subject from a person is NOT GitHub",
+          L("Ravi <ravi@gmail.com>", "check my github repo") != "Developer Tools/GitHub")
+    check("vercel.com → Deployment/Vercel", L("ship@vercel.com", "deploy done") == "Deployment/Vercel")
+    check("render.com → Deployment/Render", L("x@render.com", "live") == "Deployment/Render")
+    check("anthropic.com → AI Tools/Claude", L("x@anthropic.com", "invoice") == "AI Tools/Claude")
+    check("openai.com → AI Tools/OpenAI", L("x@openai.com", "receipt") == "AI Tools/OpenAI")
+    check("groq.com → AI Tools/Groq", L("x@groq.com", "welcome") == "AI Tools/Groq")
+    check("zerodha domain wins across categories", L("x@zerodha.com", "redemption report") == "Zerodha")
+
+
 def test_rules_most_specific():
     print("Rules (most-specific wins):")
     tax = Taxonomy(
@@ -165,7 +183,7 @@ def test_real_world_examples():
         ("sangeetha.naveen@akshayapatra.org", "Honour Your Ancestors by Feeding Children with Akshaya Patra", "Donations"),
         ("noreply@rmt.flipkart.com", "Your Order for Google Fitbit Air has been successfully placed", "Shopping/Orders & Delivery"),
         ("samf@kfintech.com", "Monthly portfolio disclosure of Motilal Oswal Mutual Fund", "Finance/Investments & Insurance"),
-        ("noreply-coin@qmailer.zerodha.net", "Coin by Zerodha - Redemption report - 06-10-2026", "Finance/Investments & Insurance"),
+        ("noreply-coin@qmailer.zerodha.net", "Coin by Zerodha - Redemption report - 06-10-2026", "Zerodha"),
         ("noreply@idfcfirst.bank.in", "Thank you for banking with us", "Bank"),  # parent only
     ]
     for frm, subject, expected in cases:
@@ -441,6 +459,7 @@ if __name__ == "__main__":
     test_taxonomy()
     test_rules_real_taxonomy()
     test_rules_most_specific()
+    test_sender_domain_folders()
     test_real_world_examples()
     test_orchestrator_states()
     test_llm_batch_path()
